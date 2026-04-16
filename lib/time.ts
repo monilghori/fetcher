@@ -4,12 +4,12 @@ import { addDays, setHours, setMinutes, setSeconds } from 'date-fns';
 const IST_TIMEZONE = 'Asia/Kolkata';
 
 export function getISTTime(): Date {
-  // Get current UTC time and convert to IST
-  const now = new Date();
-  return toZonedTime(now, IST_TIMEZONE);
+  // Just return current UTC time - we'll convert when formatting
+  return new Date();
 }
 
 export function formatISTTime(date: Date, format: string = 'yyyy-MM-dd HH:mm:ss'): string {
+  // Use formatInTimeZone to properly convert UTC to IST
   return formatInTimeZone(date, IST_TIMEZONE, format);
 }
 

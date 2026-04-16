@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [dateTicksMap, setDateTicksMap] = useState<Map<string, Nifty50Tick[]>>(new Map());
   const [clientSecondsUntilWindow, setClientSecondsUntilWindow] = useState<number>(0); // Client-side countdown
+  const [clientCurrentTime, setClientCurrentTime] = useState<string>(''); // Client-side clock
   
   // Fetch status
   const fetchStatus = async () => {
@@ -472,6 +473,55 @@ export default function Dashboard() {
     return () => clearInterval(countdownInterval);
   }, [status?.nextWindowStartTimestamp]);
   
+  // Client-side clock (updates every second, synced with server time)
+  useEffect(() => {
+    if (!status?.currentTime) return;
+    
+    // Server sends IST time as string: "2026-04-16 17:21:30"
+    // We'll use this as reference and tick from there
+    const [datePart, timePart] = status.currentTime.split(' ');
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes, seconds] = timePart.split(':').map(Number);
+    
+    // Calculate seconds since midnight for server time
+    const serverSeconds = hours * 3600 + minutes * 60 + seconds;
+    
+    // Get current local time to calculate offset
+    const fetchTime = Date.now();
+    
+    console.log('🕐 Clock sync:', {
+      serverTime: status.currentTime,
+      serverSeconds,
+      fetchTime: new Date(fetchTime).toISOString()
+    });
+    
+    const updateClock = () => {
+      // Calculate elapsed seconds since fetch
+      const elapsedMs = Date.now() - fetchTime;
+      const elapsedSeconds = Math.floor(elapsedMs / 1000);
+      
+      // Add elapsed to server time
+      let totalSeconds = serverSeconds + elapsedSeconds;
+      
+      // Handle day rollover
+      if (totalSeconds >= 86400) {
+        totalSeconds = totalSeconds % 86400;
+      }
+      
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
+      
+      const timeString = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      setClientCurrentTime(timeString);
+    };
+    
+    updateClock(); // Initial update
+    const clockInterval = setInterval(updateClock, 1000);
+    
+    return () => clearInterval(clockInterval);
+  }, [status?.currentTime]);
+  
   // Calculate change percent from opening price (first tick of the day)
   const openingPrice = ticks.length > 0 ? ticks[ticks.length - 1].ltp : 0;
   const changePercent = latestTick && openingPrice > 0 
@@ -494,7 +544,7 @@ export default function Dashboard() {
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
             <div className="text-sm text-gray-400 mb-2">Current Time (IST)</div>
             <div className="text-2xl font-mono text-white">
-              {status?.currentTime.split(' ')[1] || '--:--:--'}
+              {clientCurrentTime || status?.currentTime.split(' ')[1] || '--:--:--'}
             </div>
           </div>
           
