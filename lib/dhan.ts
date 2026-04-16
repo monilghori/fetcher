@@ -16,7 +16,13 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
     throw new Error('Dhan API credentials are placeholder values. Please update with real credentials in .env.local');
   }
   
+  // Correct request body format for Dhan API
+  const requestBody = {
+    "NSE_FNO": [NIFTY50_SECURITY_ID]
+  };
+  
   console.log('🌐 Making request to:', `${DHAN_API_BASE}/v2/marketfeed/quote`);
+  console.log('📝 Request body:', JSON.stringify(requestBody));
   console.log('📝 Headers:', {
     'Content-Type': 'application/json',
     'access-token': accessToken.substring(0, 20) + '...',
@@ -31,16 +37,7 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
         'access-token': accessToken,
         'client-id': clientId,
       },
-      body: JSON.stringify({
-        NSE_FNO: {
-          [NIFTY50_SECURITY_ID]: [
-            {
-              secId: NIFTY50_SECURITY_ID,
-              type: 'INDEX'
-            }
-          ]
-        }
-      }),
+      body: JSON.stringify(requestBody),
     });
     
     console.log('📥 Response status:', response.status, response.statusText);
@@ -49,7 +46,9 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
       const errorText = await response.text();
       console.error('❌ Response error body:', errorText);
       
-      if (response.status === 401) {
+      if (response.status === 400) {
+        throw new Error(`Dhan API bad request (400). The request format may be incorrect. Response: ${errorText}`);
+      } else if (response.status === 401) {
         throw new Error(`Dhan API authentication failed (401). Check your DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID. Response: ${errorText}`);
       } else if (response.status === 403) {
         throw new Error(`Dhan API access forbidden (403). Your credentials may be invalid or expired. Response: ${errorText}`);
@@ -63,14 +62,37 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
     }
     
     const data: any = await response.json();
-    console.log('✅ Response data received:', JSON.stringify(data).substring(0, 200) + '...');
+    console.log('✅ Response data received:', JSON.stringify(data).substring(0, 500) + '...');
     
     // Validate response structure
     if (!data || !data.data) {
       throw new Error('Dhan API returned invalid response structure. Missing data field.');
     }
     
-    return data as DhanQuoteResponse;
+    // The response structure is: { data: { "13": { last_price: ..., open: ..., etc } } }
+    const niftyData = data.data[NIFTY50_SECURITY_ID];
+    if (!niftyData) {
+      throw new Error(`Dhan API response missing data for security ID ${NIFTY50_SECURITY_ID}`);
+    }
+    
+    // Transform to expected format
+    const transformedData = {
+      data: {
+        last_price: niftyData.last_price || niftyData.ltp,
+        open: niftyData.open,
+        high: niftyData.high,
+        low: niftyData.low,
+        close: niftyData.close || niftyData.prev_close,
+        volume: niftyData.volume,
+        oi: niftyData.oi || niftyData.open_interest,
+        net_change: niftyData.change || (niftyData.last_price - niftyData.prev_close),
+        percent_change: niftyData.percent_change || ((niftyData.last_price - niftyData.prev_close) / niftyData.prev_close * 100)
+      }
+    };
+    
+    console.log('✅ Transformed data:', JSON.stringify(transformedData));
+    
+    return transformedData as DhanQuoteResponse;
   } catch (error: any) {
     console.error('💥 Fetch error details:', {
       name: error.name,
@@ -98,6 +120,11 @@ export async function fetchNifty50LTP(): Promise<number> {
     throw new Error('Dhan API credentials are placeholder values. Please update with real credentials in .env.local');
   }
   
+  // Correct request body format for Dhan API
+  const requestBody = {
+    "NSE_FNO": [NIFTY50_SECURITY_ID]
+  };
+  
   try {
     const response = await fetch(`${DHAN_API_BASE}/v2/marketfeed/ltp`, {
       method: 'POST',
@@ -106,22 +133,15 @@ export async function fetchNifty50LTP(): Promise<number> {
         'access-token': accessToken,
         'client-id': clientId,
       },
-      body: JSON.stringify({
-        NSE_FNO: {
-          [NIFTY50_SECURITY_ID]: [
-            {
-              secId: NIFTY50_SECURITY_ID,
-              type: 'INDEX'
-            }
-          ]
-        }
-      }),
+      body: JSON.stringify(requestBody),
     });
     
     if (!response.ok) {
       const errorText = await response.text();
       
-      if (response.status === 401) {
+      if (response.status === 400) {
+        throw new Error(`Dhan API bad request (400). The request format may be incorrect. Response: ${errorText}`);
+      } else if (response.status === 401) {
         throw new Error(`Dhan API authentication failed (401). Check your DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID. Response: ${errorText}`);
       } else if (response.status === 403) {
         throw new Error(`Dhan API access forbidden (403). Your credentials may be invalid or expired. Response: ${errorText}`);
@@ -137,11 +157,18 @@ export async function fetchNifty50LTP(): Promise<number> {
     const data: any = await response.json();
     
     // Validate response structure
-    if (!data || !data.data || typeof data.data.last_price !== 'number') {
+    // Response format: { data: { "13": { ltp: 22450.75 } } }
+    if (!data || !data.data || !data.data[NIFTY50_SECURITY_ID]) {
       throw new Error('Dhan API returned invalid response structure. Missing or invalid last_price field.');
     }
     
-    return data.data.last_price;
+    const ltp = data.data[NIFTY50_SECURITY_ID].ltp || data.data[NIFTY50_SECURITY_ID].last_price;
+    
+    if (typeof ltp !== 'number') {
+      throw new Error('Dhan API returned invalid LTP value.');
+    }
+    
+    return ltp;
   } catch (error: any) {
     if (error.message?.includes('fetch')) {
       throw new Error(`Network error connecting to Dhan API: ${error.message}. Check your internet connection.`);
