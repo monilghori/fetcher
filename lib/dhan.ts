@@ -63,18 +63,34 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
     }
     
     const data: any = await response.json();
-    console.log('✅ Response data received:', JSON.stringify(data).substring(0, 500) + '...');
+    console.log('✅ Response data received (FULL):', JSON.stringify(data, null, 2));
     
     // Validate response structure
     if (!data || !data.data) {
       throw new Error('Dhan API returned invalid response structure. Missing data field.');
     }
     
-    // The response structure is: { data: { "13": { last_price: ..., open: ..., etc } } }
-    const niftyData = data.data[NIFTY50_SECURITY_ID.toString()];
+    console.log('📊 Data keys:', Object.keys(data.data));
+    console.log('📊 Looking for security ID:', NIFTY50_SECURITY_ID, 'as string:', NIFTY50_SECURITY_ID.toString());
+    
+    // Try different possible keys
+    let niftyData = data.data[NIFTY50_SECURITY_ID.toString()] || 
+                    data.data[NIFTY50_SECURITY_ID] ||
+                    data.data['13'] ||
+                    data.data[13];
+    
     if (!niftyData) {
-      throw new Error(`Dhan API response missing data for security ID ${NIFTY50_SECURITY_ID}`);
+      // If still not found, check if data is directly in the response
+      if (data.last_price || data.ltp) {
+        niftyData = data;
+      } else {
+        console.error('❌ Available keys in data:', Object.keys(data.data));
+        console.error('❌ Full response:', JSON.stringify(data, null, 2));
+        throw new Error(`Dhan API response missing data for security ID ${NIFTY50_SECURITY_ID}. Available keys: ${Object.keys(data.data).join(', ')}`);
+      }
     }
+    
+    console.log('✅ Found Nifty data:', JSON.stringify(niftyData, null, 2));
     
     // Transform to expected format
     const transformedData = {
