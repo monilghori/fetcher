@@ -62,7 +62,7 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
       }
     }
     
-    const data = await response.json();
+    const data: any = await response.json();
     console.log('✅ Response data received:', JSON.stringify(data).substring(0, 200) + '...');
     
     // Validate response structure
@@ -70,7 +70,7 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
       throw new Error('Dhan API returned invalid response structure. Missing data field.');
     }
     
-    return data;
+    return data as DhanQuoteResponse;
   } catch (error: any) {
     console.error('💥 Fetch error details:', {
       name: error.name,
@@ -134,7 +134,7 @@ export async function fetchNifty50LTP(): Promise<number> {
       }
     }
     
-    const data = await response.json();
+    const data: any = await response.json();
     
     // Validate response structure
     if (!data || !data.data || typeof data.data.last_price !== 'number') {
