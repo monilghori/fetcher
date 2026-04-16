@@ -2,7 +2,7 @@ import { DhanQuoteResponse } from './types';
 import { fetch as undiciFetch } from 'undici';
 
 const DHAN_API_BASE = 'https://api.dhan.co';
-const NIFTY50_SECURITY_ID = '13';
+const NIFTY50_SECURITY_ID = 13; // Nifty 50 Index security ID as number
 
 export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
   const accessToken = process.env.DHAN_ACCESS_TOKEN;
@@ -17,6 +17,7 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
   }
   
   // Correct request body format for Dhan API
+  // Format: { "NSE_FNO": [13] } - security ID as number, not string
   const requestBody = {
     "NSE_FNO": [NIFTY50_SECURITY_ID]
   };
@@ -70,7 +71,7 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
     }
     
     // The response structure is: { data: { "13": { last_price: ..., open: ..., etc } } }
-    const niftyData = data.data[NIFTY50_SECURITY_ID];
+    const niftyData = data.data[NIFTY50_SECURITY_ID.toString()];
     if (!niftyData) {
       throw new Error(`Dhan API response missing data for security ID ${NIFTY50_SECURITY_ID}`);
     }
@@ -121,6 +122,7 @@ export async function fetchNifty50LTP(): Promise<number> {
   }
   
   // Correct request body format for Dhan API
+  // Format: { "NSE_FNO": [13] } - security ID as number, not string
   const requestBody = {
     "NSE_FNO": [NIFTY50_SECURITY_ID]
   };
@@ -158,11 +160,11 @@ export async function fetchNifty50LTP(): Promise<number> {
     
     // Validate response structure
     // Response format: { data: { "13": { ltp: 22450.75 } } }
-    if (!data || !data.data || !data.data[NIFTY50_SECURITY_ID]) {
+    if (!data || !data.data || !data.data[NIFTY50_SECURITY_ID.toString()]) {
       throw new Error('Dhan API returned invalid response structure. Missing or invalid last_price field.');
     }
     
-    const ltp = data.data[NIFTY50_SECURITY_ID].ltp || data.data[NIFTY50_SECURITY_ID].last_price;
+    const ltp = data.data[NIFTY50_SECURITY_ID.toString()].ltp || data.data[NIFTY50_SECURITY_ID.toString()].last_price;
     
     if (typeof ltp !== 'number') {
       throw new Error('Dhan API returned invalid LTP value.');
