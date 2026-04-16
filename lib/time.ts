@@ -53,66 +53,51 @@ export function isWithinCollectionWindow(): boolean {
 export function getNextWindowStart(): Date {
   const now = new Date();
   
-  // Get current IST date string and parse it
-  const istDateStr = formatInTimeZone(now, IST_TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
-  const istDate = new Date(istDateStr + '+05:30'); // Create Date with IST timezone
+  // Convert current UTC to IST by adding 5.5 hours
+  const nowIST = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
   
   console.log('📅 Calculating next window:');
   console.log('  Current UTC:', now.toISOString());
-  console.log('  Current IST:', formatInTimeZone(now, IST_TIMEZONE, 'yyyy-MM-dd HH:mm:ss EEEE'));
+  console.log('  Current IST:', nowIST.toISOString(), '(as UTC+5:30)');
   
-  // Get day of week using JavaScript's getDay() on IST date
-  // Note: We need to create a proper IST date object
-  const istHours = parseInt(formatInTimeZone(now, IST_TIMEZONE, 'HH'));
-  const istMinutes = parseInt(formatInTimeZone(now, IST_TIMEZONE, 'mm'));
+  // Get IST time components
+  const istHours = nowIST.getUTCHours();
+  const istMinutes = nowIST.getUTCMinutes();
+  const istDay = nowIST.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  
+  console.log('  IST Day:', istDay, 'Hours:', istHours, 'Minutes:', istMinutes);
   
   // Calculate total minutes since midnight IST
   const currentMinutes = istHours * 60 + istMinutes;
   const windowStartMinutes = 14 * 60 + 55; // 14:55 = 895 minutes
   
-  let daysToAdd = 0;
+  // Start with today at 14:55 IST
+  let nextWindowIST = new Date(nowIST);
+  nextWindowIST.setUTCHours(14, 55, 0, 0);
   
-  // If we're past today's window (after 14:55), move to next day
+  // If we're past today's window, move to next day
   if (currentMinutes >= windowStartMinutes) {
-    daysToAdd = 1;
-    console.log('  Past today\'s window (', istHours, ':', istMinutes, '), moving to next day');
-  } else {
-    console.log('  Before today\'s window, using today');
+    nextWindowIST.setUTCDate(nextWindowIST.getUTCDate() + 1);
+    console.log('  Past today\'s window, moving to next day');
   }
   
-  // Calculate next window date by adding days
-  let nextWindowDate = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
-  let nextDayStr = formatInTimeZone(nextWindowDate, IST_TIMEZONE, 'yyyy-MM-dd EEEE');
-  
-  // Get day of week (0=Sun, 1=Mon, ..., 6=Sat) by parsing the IST date
-  let nextDayIST = formatInTimeZone(nextWindowDate, IST_TIMEZONE, 'yyyy-MM-dd');
-  let nextDayObj = new Date(nextDayIST + 'T12:00:00+05:30'); // Noon IST to avoid edge cases
-  let nextDay = nextDayObj.getUTCDay(); // This gives us the day in the timezone
-  
-  console.log('  Initial next day:', nextDayStr, 'Day number:', nextDay);
-  
-  // Skip weekends (0=Sunday, 6=Saturday)
+  // Skip weekends
+  let nextDay = nextWindowIST.getUTCDay();
   while (nextDay === 0 || nextDay === 6) {
     console.log('  Skipping weekend day:', nextDay);
-    daysToAdd++;
-    nextWindowDate = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
-    nextDayStr = formatInTimeZone(nextWindowDate, IST_TIMEZONE, 'yyyy-MM-dd EEEE');
-    nextDayIST = formatInTimeZone(nextWindowDate, IST_TIMEZONE, 'yyyy-MM-dd');
-    nextDayObj = new Date(nextDayIST + 'T12:00:00+05:30');
-    nextDay = nextDayObj.getUTCDay();
+    nextWindowIST.setUTCDate(nextWindowIST.getUTCDate() + 1);
+    nextDay = nextWindowIST.getUTCDay();
   }
   
-  console.log('  Final next day:', nextDayStr, 'Day number:', nextDay);
-  console.log('  Total days to add:', daysToAdd);
+  console.log('  Next window IST (as UTC):', nextWindowIST.toISOString());
   
-  // Create next window time: next valid day at 14:55:00 IST
-  const nextWindowDateStr = formatInTimeZone(nextWindowDate, IST_TIMEZONE, 'yyyy-MM-dd');
-  const nextWindowIST = new Date(`${nextWindowDateStr}T14:55:00+05:30`);
+  // Convert back to actual UTC by subtracting 5.5 hours
+  const nextWindowUTC = new Date(nextWindowIST.getTime() - (5.5 * 60 * 60 * 1000));
   
-  console.log('  Next window IST:', formatInTimeZone(nextWindowIST, IST_TIMEZONE, 'yyyy-MM-dd HH:mm:ss EEEE'));
-  console.log('  Next window UTC:', nextWindowIST.toISOString());
+  console.log('  Next window UTC:', nextWindowUTC.toISOString());
+  console.log('  Next window IST display:', formatInTimeZone(nextWindowUTC, IST_TIMEZONE, 'yyyy-MM-dd HH:mm:ss EEEE'));
   
-  return nextWindowIST;
+  return nextWindowUTC;
 }
 
 export function getSecondsUntilWindow(): number {
@@ -122,8 +107,9 @@ export function getSecondsUntilWindow(): number {
   
   console.log('⏰ Countdown calculation:');
   console.log('  Now (UTC):', now.toISOString());
-  console.log('  Next window (IST):', formatInTimeZone(nextWindow, IST_TIMEZONE, 'yyyy-MM-dd HH:mm:ss'));
+  console.log('  Next window (UTC):', nextWindow.toISOString());
   console.log('  Seconds until window:', seconds);
+  console.log('  Hours until window:', (seconds / 3600).toFixed(2));
   
-  return seconds;
+  return Math.max(0, seconds); // Ensure non-negative
 }
