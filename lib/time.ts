@@ -51,24 +51,51 @@ export function isWithinCollectionWindow(): boolean {
 }
 
 export function getNextWindowStart(): Date {
-  const ist = getISTTime();
-  let nextWindow = setSeconds(setMinutes(setHours(ist, 14), 55), 0);
+  const now = new Date();
   
-  // If we're past today's window, move to next weekday
-  if (ist >= nextWindow) {
-    nextWindow = addDays(nextWindow, 1);
+  // Get current IST time components
+  const istHours = parseInt(formatInTimeZone(now, IST_TIMEZONE, 'HH'));
+  const istMinutes = parseInt(formatInTimeZone(now, IST_TIMEZONE, 'mm'));
+  const istDay = parseInt(formatInTimeZone(now, IST_TIMEZONE, 'e')); // 0=Sun, 6=Sat
+  
+  // Calculate total minutes since midnight IST
+  const currentMinutes = istHours * 60 + istMinutes;
+  const windowStartMinutes = 14 * 60 + 55; // 14:55 = 895 minutes
+  
+  let daysToAdd = 0;
+  
+  // If we're past today's window (after 14:55), move to next day
+  if (currentMinutes >= windowStartMinutes) {
+    daysToAdd = 1;
   }
+  
+  // Calculate next window date
+  let nextWindowDate = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+  let nextDay = parseInt(formatInTimeZone(nextWindowDate, IST_TIMEZONE, 'e'));
   
   // Skip weekends
-  while (nextWindow.getDay() === 0 || nextWindow.getDay() === 6) {
-    nextWindow = addDays(nextWindow, 1);
+  while (nextDay === 0 || nextDay === 6) {
+    daysToAdd++;
+    nextWindowDate = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+    nextDay = parseInt(formatInTimeZone(nextWindowDate, IST_TIMEZONE, 'e'));
   }
   
-  return nextWindow;
+  // Create next window time: next valid day at 14:55:00 IST
+  const nextWindowDateStr = formatInTimeZone(nextWindowDate, IST_TIMEZONE, 'yyyy-MM-dd');
+  const nextWindowIST = new Date(`${nextWindowDateStr}T14:55:00+05:30`);
+  
+  return nextWindowIST;
 }
 
 export function getSecondsUntilWindow(): number {
-  const now = getISTTime();
+  const now = new Date();
   const nextWindow = getNextWindowStart();
-  return Math.floor((nextWindow.getTime() - now.getTime()) / 1000);
+  const seconds = Math.floor((nextWindow.getTime() - now.getTime()) / 1000);
+  
+  console.log('⏰ Countdown calculation:');
+  console.log('  Now (UTC):', now.toISOString());
+  console.log('  Next window (IST):', formatInTimeZone(nextWindow, IST_TIMEZONE, 'yyyy-MM-dd HH:mm:ss'));
+  console.log('  Seconds until window:', seconds);
+  
+  return seconds;
 }

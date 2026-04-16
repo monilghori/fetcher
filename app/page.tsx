@@ -446,7 +446,11 @@ export default function Dashboard() {
     };
   }, []);
   
-  const changePercent = latestTick?.percent_change || 0;
+  // Calculate change percent from opening price (first tick of the day)
+  const openingPrice = ticks.length > 0 ? ticks[ticks.length - 1].ltp : 0;
+  const changePercent = latestTick && openingPrice > 0 
+    ? ((latestTick.ltp - openingPrice) / openingPrice) * 100 
+    : 0;
   const isPositive = changePercent >= 0;
   
   return (

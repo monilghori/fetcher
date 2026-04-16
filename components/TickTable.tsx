@@ -27,8 +27,18 @@ export default function TickTable({ ticks }: TickTableProps) {
         </thead>
         <tbody className="divide-y divide-gray-800">
           {ticks.map((tick, index) => {
-            const change = tick.net_change || 0;
-            const changePercent = tick.percent_change || 0;
+            // Calculate change from previous tick
+            // Note: ticks are sorted DESC (newest first), so next item is the previous tick
+            let change = 0;
+            let changePercent = 0;
+            
+            if (index < ticks.length - 1) {
+              const previousTick = ticks[index + 1];
+              change = tick.ltp - previousTick.ltp;
+              changePercent = previousTick.ltp > 0 ? (change / previousTick.ltp) * 100 : 0;
+            }
+            // First tick (oldest) has no previous tick, so change is 0
+            
             const isPositive = change >= 0;
             
             return (
