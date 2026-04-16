@@ -6,6 +6,7 @@ import TickTable from '@/components/TickTable';
 import LTPChart from '@/components/LTPChart';
 import CountdownTimer from '@/components/CountdownTimer';
 import { Nifty50Tick } from '@/lib/types';
+import { formatISTTime, getISTTime } from '@/lib/time';
 
 interface StatusData {
   isWithinWindow: boolean;
@@ -26,6 +27,9 @@ export default function Dashboard() {
   const [testAbortController, setTestAbortController] = useState<AbortController | null>(null);
   const [testTicksCollected, setTestTicksCollected] = useState(0);
   const [errorDetails, setErrorDetails] = useState<{type: string; message: string} | null>(null);
+  const [dailySummaries, setDailySummaries] = useState<any[]>([]);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [dateTicksMap, setDateTicksMap] = useState<Map<string, Nifty50Tick[]>>(new Map());
   
   // Fetch status
   const fetchStatus = async () => {
@@ -54,35 +58,71 @@ export default function Dashboard() {
     }
   };
   
-  // Fetch ticks
-  const fetchTicks = async () => {
+  // Fetch available dates with summaries
+  const fetchAvailableDates = async () => {
     try {
-      const res = await fetch('/api/ticks?limit=50');
+      const res = await fetch('/api/daily-summary');
+      if (res.ok) {
+        const data = await res.json();
+        setDailySummaries(data.summaries || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch available dates:', error);
+    }
+  };
+  
+  // Fetch ticks for today (for live display)
+  const fetchTodayTicks = async () => {
+    try {
+      const today = formatISTTime(getISTTime(), 'yyyy-MM-dd');
+      const url = `/api/ticks?limit=1000&date=${today}`;
+      
+      const res = await fetch(url);
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        console.error('Ticks fetch failed:', errorData);
-        
-        // Check for table not found error
-        if (errorData.details?.includes('nifty50_ticks') || 
-            errorData.message?.includes('nifty50_ticks') ||
-            errorData.details?.includes('PGRST205')) {
-          setErrorDetails({
-            type: 'database_setup',
-            message: 'Database table not found. Please run the setup SQL in Supabase. See SETUP_DATABASE.md'
-          });
-        }
+        console.error('❌ Ticks fetch failed:', errorData);
         return;
       }
       
       const data = await res.json();
+      
       setTicks(data.ticks || []);
       if (data.ticks && data.ticks.length > 0) {
         setLatestTick(data.ticks[0]);
       }
     } catch (error: any) {
-      console.error('Failed to fetch ticks:', error);
-      // Silent fail for background tick updates
+      console.error('💥 Failed to fetch ticks:', error);
+    }
+  };
+  
+  // Toggle day expansion and fetch ticks if needed
+  const toggleDayExpansion = async (date: string) => {
+    const newExpandedDates = new Set(expandedDates);
+    
+    if (expandedDates.has(date)) {
+      // Collapse
+      newExpandedDates.delete(date);
+      setExpandedDates(newExpandedDates);
+    } else {
+      // Expand
+      newExpandedDates.add(date);
+      setExpandedDates(newExpandedDates);
+      
+      // Fetch ticks if not already loaded
+      if (!dateTicksMap.has(date)) {
+        try {
+          const res = await fetch(`/api/ticks?limit=1000&date=${date}`);
+          if (res.ok) {
+            const data = await res.json();
+            const newMap = new Map(dateTicksMap);
+            newMap.set(date, data.ticks || []);
+            setDateTicksMap(newMap);
+          }
+        } catch (error) {
+          console.error('Failed to fetch ticks for date:', date, error);
+        }
+      }
     }
   };
   
@@ -127,8 +167,8 @@ export default function Dashboard() {
         return;
       }
       
-      // Refresh ticks
-      await fetchTicks();
+      // Refresh today's ticks
+      await fetchTodayTicks();
       setLastFetchError(null);
     } catch (error: any) {
       let errorMsg = 'Network error. Please check your connection.';
@@ -240,8 +280,8 @@ export default function Dashboard() {
             console.log('✅ SUCCESS! Tick #' + tickCount + ' saved');
             console.log('Tick data:', responseData.tick);
             
-            // Refresh ticks display
-            await fetchTicks();
+            // Refresh today's ticks display
+            await fetchTodayTicks();
           }
         } catch (error: any) {
           if (error.name === 'AbortError') {
@@ -299,8 +339,9 @@ export default function Dashboard() {
         setLastFetchError(null);
       }
       
-      // Refresh final ticks
-      await fetchTicks();
+      // Refresh today's ticks and summaries
+      await fetchTodayTicks();
+      await fetchAvailableDates();
       
       // Clear message after 8 seconds
       setTimeout(() => {
@@ -353,14 +394,13 @@ export default function Dashboard() {
   // Initial load and periodic refresh
   useEffect(() => {
     fetchStatus();
-    fetchTicks();
+    fetchAvailableDates();
+    fetchTodayTicks();
     
-    const statusInterval = setInterval(fetchStatus, 5000);
-    const ticksInterval = setInterval(fetchTicks, 5000);
+    const statusInterval = setInterval(fetchStatus, 10000);
     
     return () => {
       clearInterval(statusInterval);
-      clearInterval(ticksInterval);
     };
   }, []);
   
@@ -421,6 +461,8 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+        
+
         
         {/* Manual Fetch Button */}
         <div className="flex items-center gap-4 flex-wrap">
@@ -521,10 +563,111 @@ export default function Dashboard() {
           <LTPChart ticks={ticks} />
         </div>
         
-        {/* Ticks Table */}
+        {/* Historical Data - Expandable Day List */}
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h2 className="text-xl font-semibold text-white mb-4">Recent Ticks</h2>
-          <TickTable ticks={ticks.slice(0, 20)} />
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Historical Data</h2>
+              <p className="text-sm text-gray-400 mt-1">
+                Click on any day to expand and view all ticks
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                fetchAvailableDates();
+                setDateTicksMap(new Map());
+                setExpandedDates(new Set());
+              }}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+            >
+              <span>🔄</span>
+              <span>Refresh</span>
+            </button>
+          </div>
+          
+          {dailySummaries.length > 0 ? (
+            <div className="space-y-2">
+              {dailySummaries.map((summary) => {
+                const isExpanded = expandedDates.has(summary.date);
+                const dayTicks = dateTicksMap.get(summary.date) || [];
+                
+                return (
+                  <div key={summary.date} className="border border-gray-700 rounded-lg overflow-hidden">
+                    {/* Day Header - Clickable */}
+                    <button
+                      onClick={() => toggleDayExpansion(summary.date)}
+                      className="w-full bg-gray-700 hover:bg-gray-600 transition-colors p-4 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                          <span className="text-gray-400 text-xl">▶</span>
+                        </div>
+                        <div className="text-left">
+                          <div className="text-white font-semibold">
+                            {new Date(summary.date + 'T00:00:00').toLocaleDateString('en-IN', {
+                              weekday: 'long',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </div>
+                          <div className="text-sm text-gray-400 mt-1">
+                            {summary.tick_count} ticks collected
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <div className="text-xs text-gray-400">High</div>
+                          <div className="text-green-400 font-mono font-semibold">
+                            {summary.high_ltp?.toFixed(2) || '-'}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-gray-400">Low</div>
+                          <div className="text-red-400 font-mono font-semibold">
+                            {summary.low_ltp?.toFixed(2) || '-'}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-gray-400">Open</div>
+                          <div className="text-blue-400 font-mono font-semibold">
+                            {summary.opening_ltp?.toFixed(2) || '-'}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-gray-400">Close</div>
+                          <div className="text-purple-400 font-mono font-semibold">
+                            {summary.closing_ltp?.toFixed(2) || '-'}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                    
+                    {/* Expanded Content - Ticks Table */}
+                    {isExpanded && (
+                      <div className="bg-gray-900 p-4">
+                        {dayTicks.length > 0 ? (
+                          <TickTable ticks={dayTicks} />
+                        ) : (
+                          <div className="text-center py-8 text-gray-500">
+                            <div className="animate-spin w-8 h-8 border-4 border-gray-600 border-t-blue-500 rounded-full mx-auto mb-3"></div>
+                            <div>Loading ticks...</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <div className="text-lg mb-2">No historical data available</div>
+              <div className="text-sm">Run test mode to start collecting data</div>
+            </div>
+          )}
         </div>
         
         {/* Info */}

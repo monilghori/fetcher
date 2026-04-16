@@ -100,22 +100,61 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
     
     console.log('✅ Found Nifty data:', JSON.stringify(niftyData, null, 2));
     
+    // Log all available fields
+    console.log('📋 Available fields in response:', Object.keys(niftyData));
+    
+    // Extract values with fallbacks and detailed logging
+    const ltp = niftyData.last_price || niftyData.ltp || niftyData.LTP || 0;
+    const prevClose = niftyData.prev_close || niftyData.close || niftyData.previous_close || niftyData.prevClose || 0;
+    const open = niftyData.open || niftyData.open_price || niftyData.OPEN || 0;
+    const high = niftyData.high || niftyData.high_price || niftyData.HIGH || 0;
+    const low = niftyData.low || niftyData.low_price || niftyData.LOW || 0;
+    const volume = niftyData.volume || niftyData.VOLUME || niftyData.vol || 0;
+    const oi = niftyData.oi || niftyData.open_interest || niftyData.OI || niftyData.openInterest || 0;
+    
+    console.log('📊 Extracted values:');
+    console.log('  LTP:', ltp);
+    console.log('  Open:', open);
+    console.log('  High:', high);
+    console.log('  Low:', low);
+    console.log('  Prev Close:', prevClose);
+    console.log('  Volume:', volume);
+    console.log('  OI:', oi);
+    
+    // Calculate change and percent change
+    let netChange = 0;
+    let percentChange = 0;
+    
+    if (prevClose && prevClose > 0) {
+      netChange = ltp - prevClose;
+      percentChange = (netChange / prevClose) * 100;
+      console.log('✅ Using prev_close for calculation');
+    } else if (open && open > 0) {
+      // Fallback: use open price if prev_close not available
+      netChange = ltp - open;
+      percentChange = (netChange / open) * 100;
+      console.log('⚠️ Using open price for calculation (prev_close not available)');
+    } else {
+      console.log('⚠️ Cannot calculate change - no reference price available');
+    }
+    
     // Transform to expected format
     const transformedData = {
       data: {
-        last_price: niftyData.last_price || niftyData.ltp,
-        open: niftyData.open,
-        high: niftyData.high,
-        low: niftyData.low,
-        close: niftyData.close || niftyData.prev_close,
-        volume: niftyData.volume,
-        oi: niftyData.oi || niftyData.open_interest,
-        net_change: niftyData.change || (niftyData.last_price - niftyData.prev_close),
-        percent_change: niftyData.percent_change || ((niftyData.last_price - niftyData.prev_close) / niftyData.prev_close * 100)
+        last_price: ltp,
+        open: open || null,
+        high: high || null,
+        low: low || null,
+        close: prevClose || null,
+        volume: volume || null,
+        oi: oi || null,
+        net_change: netChange,
+        percent_change: percentChange
       }
     };
     
-    console.log('✅ Transformed data:', JSON.stringify(transformedData));
+    console.log('✅ Transformed data:', JSON.stringify(transformedData, null, 2));
+    console.log('📊 Final calculations: LTP=' + ltp + ', PrevClose=' + prevClose + ', Change=' + netChange.toFixed(2) + ', %Change=' + percentChange.toFixed(2) + '%');
     
     return transformedData as DhanQuoteResponse;
   } catch (error: any) {

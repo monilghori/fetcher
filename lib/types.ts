@@ -1,12 +1,12 @@
 export interface DhanQuoteResponse {
   data: {
     last_price: number;
-    open: number;
-    high: number;
-    low: number;
-    close: number;
-    volume: number;
-    oi?: number;
+    open: number | null;
+    high: number | null;
+    low: number | null;
+    close: number | null;
+    volume: number | null;
+    oi?: number | null;
     net_change?: number;
     percent_change?: number;
   };
