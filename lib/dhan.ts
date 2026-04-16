@@ -17,9 +17,9 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
   }
   
   // Correct request body format for Dhan API
-  // Format: { "NSE_FNO": [13] } - security ID as number, not string
+  // Nifty 50 is an INDEX, so we use IDX_I segment, not NSE_FNO
   const requestBody = {
-    "NSE_FNO": [NIFTY50_SECURITY_ID]
+    "IDX_I": [NIFTY50_SECURITY_ID]
   };
   
   console.log('🌐 Making request to:', `${DHAN_API_BASE}/v2/marketfeed/quote`);
@@ -73,20 +73,28 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
     console.log('📊 Data keys:', Object.keys(data.data));
     console.log('📊 Looking for security ID:', NIFTY50_SECURITY_ID, 'as string:', NIFTY50_SECURITY_ID.toString());
     
+    // Response structure: { data: { "IDX_I": { "13": { ... } } } }
+    const idxData = data.data['IDX_I'] || data.data['NSE_FNO'];
+    
+    if (!idxData) {
+      console.error('❌ No IDX_I or NSE_FNO data in response');
+      throw new Error('Dhan API response missing segment data');
+    }
+    
     // Try different possible keys
-    let niftyData = data.data[NIFTY50_SECURITY_ID.toString()] || 
-                    data.data[NIFTY50_SECURITY_ID] ||
-                    data.data['13'] ||
-                    data.data[13];
+    let niftyData = idxData[NIFTY50_SECURITY_ID.toString()] || 
+                    idxData[NIFTY50_SECURITY_ID] ||
+                    idxData['13'] ||
+                    idxData[13];
     
     if (!niftyData) {
       // If still not found, check if data is directly in the response
       if (data.last_price || data.ltp) {
         niftyData = data;
       } else {
-        console.error('❌ Available keys in data:', Object.keys(data.data));
+        console.error('❌ Available keys in segment:', Object.keys(idxData));
         console.error('❌ Full response:', JSON.stringify(data, null, 2));
-        throw new Error(`Dhan API response missing data for security ID ${NIFTY50_SECURITY_ID}. Available keys: ${Object.keys(data.data).join(', ')}`);
+        throw new Error(`Dhan API response missing data for security ID ${NIFTY50_SECURITY_ID}. Available keys: ${Object.keys(idxData).join(', ')}`);
       }
     }
     
@@ -138,9 +146,9 @@ export async function fetchNifty50LTP(): Promise<number> {
   }
   
   // Correct request body format for Dhan API
-  // Format: { "NSE_FNO": [13] } - security ID as number, not string
+  // Nifty 50 is an INDEX, so we use IDX_I segment, not NSE_FNO
   const requestBody = {
-    "NSE_FNO": [NIFTY50_SECURITY_ID]
+    "IDX_I": [NIFTY50_SECURITY_ID]
   };
   
   try {
@@ -175,12 +183,14 @@ export async function fetchNifty50LTP(): Promise<number> {
     const data: any = await response.json();
     
     // Validate response structure
-    // Response format: { data: { "13": { ltp: 22450.75 } } }
-    if (!data || !data.data || !data.data[NIFTY50_SECURITY_ID.toString()]) {
+    // Response format: { data: { "IDX_I": { "13": { ltp: 22450.75 } } } }
+    const idxData = data.data['IDX_I'] || data.data['NSE_FNO'];
+    
+    if (!idxData || !idxData[NIFTY50_SECURITY_ID.toString()]) {
       throw new Error('Dhan API returned invalid response structure. Missing or invalid last_price field.');
     }
     
-    const ltp = data.data[NIFTY50_SECURITY_ID.toString()].ltp || data.data[NIFTY50_SECURITY_ID.toString()].last_price;
+    const ltp = idxData[NIFTY50_SECURITY_ID.toString()].ltp || idxData[NIFTY50_SECURITY_ID.toString()].last_price;
     
     if (typeof ltp !== 'number') {
       throw new Error('Dhan API returned invalid LTP value.');
