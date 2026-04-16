@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseBrowserClient } from '@/lib/supabase';
 import { formatISTTime, getISTTime } from '@/lib/time';
 
+// Disable caching for this API route
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -9,9 +13,11 @@ export async function GET(request: NextRequest) {
     const date = searchParams.get('date'); // YYYY-MM-DD format
     
     const supabase = getSupabaseBrowserClient();
+    
+    // Start building query
     let query = supabase
       .from('nifty50_ticks')
-      .select('*')
+      .select('*', { count: 'exact' })  // Get exact count
       .order('fetched_at', { ascending: false });
     
     // Filter by date if provided
@@ -25,16 +31,16 @@ export async function GET(request: NextRequest) {
       }
       
       // Convert IST date to UTC range for database query
-      // The date parameter is in IST (e.g., "2026-04-16")
-      // We need to query for UTC timestamps that fall within this IST date
       const startOfDayIST = new Date(`${date}T00:00:00+05:30`);
       const endOfDayIST = new Date(`${date}T23:59:59+05:30`);
       
       const startOfDayUTC = startOfDayIST.toISOString();
       const endOfDayUTC = endOfDayIST.toISOString();
       
-      query = query.gte('fetched_at', startOfDayUTC).lte('fetched_at', endOfDayUTC);
-      // NO LIMIT when filtering by date - fetch ALL ticks for that day
+      query = query
+        .gte('fetched_at', startOfDayUTC)
+        .lte('fetched_at', endOfDayUTC)
+        .range(0, 9999); // Explicitly set range to fetch up to 10000 rows
     } else {
       // Apply limit only when NOT filtering by date
       let limit = 1000; // Default high limit
@@ -51,7 +57,7 @@ export async function GET(request: NextRequest) {
       query = query.limit(limit);
     }
     
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     
     if (error) {
       console.error('Supabase query error:', error);
@@ -66,8 +72,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ticks: data,
       count: data?.length || 0,
+      totalCount: count,
       currentTime: formatISTTime(getISTTime()),
       ...(date && { queriedDate: date })
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     });
     
   } catch (error: any) {
