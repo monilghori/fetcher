@@ -84,8 +84,6 @@ export default function Dashboard() {
       const res = await fetch(url);
       
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('❌ Ticks fetch failed:', errorData);
         return;
       }
       
@@ -96,7 +94,7 @@ export default function Dashboard() {
         setLatestTick(data.ticks[0]);
       }
     } catch (error: any) {
-      console.error('💥 Failed to fetch ticks:', error);
+      console.error('Failed to fetch ticks:', error);
     }
   };
   
@@ -106,32 +104,24 @@ export default function Dashboard() {
     
     if (expandedDates.has(date)) {
       // Collapse
-      console.log('📁 Collapsing date:', date);
       newExpandedDates.delete(date);
       setExpandedDates(newExpandedDates);
     } else {
       // Expand
-      console.log('📂 Expanding date:', date);
       newExpandedDates.add(date);
       setExpandedDates(newExpandedDates);
       
       // Always fetch ticks (even if cached) to get latest data
       try {
-        console.log('📡 Fetching ticks for date:', date);
         const res = await fetch(`/api/ticks?date=${date}`);
         if (res.ok) {
           const data = await res.json();
-          console.log('✅ Received', data.count, 'ticks for', date);
-          console.log('📊 Sample ticks:', data.ticks?.slice(0, 3));
           const newMap = new Map(dateTicksMap);
           newMap.set(date, data.ticks || []);
           setDateTicksMap(newMap);
-          console.log('💾 Stored', data.ticks?.length || 0, 'ticks in state');
-        } else {
-          console.error('❌ Failed to fetch ticks:', res.status, res.statusText);
         }
       } catch (error) {
-        console.error('💥 Failed to fetch ticks for date:', date, error);
+        console.error('Failed to fetch ticks for date:', date, error);
       }
     }
   };
@@ -221,14 +211,9 @@ export default function Dashboard() {
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 3;
     
-    console.log('🧪 TEST MODE STARTED');
-    console.log('Duration:', duration / 1000, 'seconds');
-    console.log('Expected ticks:', Math.floor(duration / 3000));
-    
     try {
       while (Date.now() - startTime < duration && !abortController.signal.aborted) {
         const attemptNumber = tickCount + consecutiveErrors + 1;
-        console.log(`\n📡 Attempt #${attemptNumber} - Fetching tick...`);
         
         try {
           // Fetch single tick
@@ -242,10 +227,7 @@ export default function Dashboard() {
             signal: abortController.signal
           });
           
-          console.log('Response status:', quoteRes.status, quoteRes.statusText);
-          
           const responseData = await quoteRes.json();
-          console.log('Response data:', responseData);
           
           if (!quoteRes.ok) {
             consecutiveErrors++;
@@ -254,7 +236,6 @@ export default function Dashboard() {
             let errorMsg = 'Fetch failed';
             if (quoteRes.status === 401) {
               errorMsg = 'Authentication error. Check CRON_SECRET in .env.local';
-              console.error('❌ AUTH ERROR:', errorData);
               setLastFetchError(errorMsg);
               break; // Stop on auth error
             } else if (quoteRes.status === 500) {
@@ -265,7 +246,6 @@ export default function Dashboard() {
               } else {
                 errorMsg = errorData.message || 'Server error';
               }
-              console.error('❌ SERVER ERROR:', errorData);
             }
             
             console.error('Tick fetch error:', errorMsg, errorData);
@@ -273,7 +253,6 @@ export default function Dashboard() {
             // Stop if too many consecutive errors
             if (consecutiveErrors >= maxConsecutiveErrors) {
               setLastFetchError(`${errorMsg}. Stopped after ${maxConsecutiveErrors} consecutive failures.`);
-              console.error('🛑 STOPPING: Too many consecutive errors');
               break;
             }
             
@@ -287,15 +266,11 @@ export default function Dashboard() {
             setTestProgress(`Collecting... ${tickCount} ticks (${remaining}s remaining)`);
             setLastFetchError(null);
             
-            console.log('✅ SUCCESS! Tick #' + tickCount + ' saved');
-            console.log('Tick data:', responseData.tick);
-            
             // Refresh today's ticks display
             await fetchTodayTicks();
           }
         } catch (error: any) {
           if (error.name === 'AbortError') {
-            console.log('⚠️ Aborted by user');
             break;
           }
           
@@ -310,12 +285,11 @@ export default function Dashboard() {
             errorMsg = error.message;
           }
           
-          console.error('❌ EXCEPTION:', error);
+          console.error('Test mode exception:', error);
           
           // Stop if too many consecutive errors
           if (consecutiveErrors >= maxConsecutiveErrors) {
             setLastFetchError(`${errorMsg}. Stopped after ${maxConsecutiveErrors} consecutive failures.`);
-            console.error('🛑 STOPPING: Too many consecutive errors');
             break;
           }
           
@@ -323,7 +297,6 @@ export default function Dashboard() {
         }
         
         // Wait 3 seconds before next fetch
-        console.log('⏳ Waiting 3 seconds...');
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(resolve, 3000);
           abortController.signal.addEventListener('abort', () => {
@@ -334,10 +307,6 @@ export default function Dashboard() {
         
         if (abortController.signal.aborted) break;
       }
-      
-      console.log('\n🏁 TEST COMPLETED');
-      console.log('Total ticks collected:', tickCount);
-      console.log('Total errors:', consecutiveErrors);
       
       if (abortController.signal.aborted) {
         setTestProgress(`⚠ Test cancelled. Collected ${tickCount} ticks.`);
@@ -350,33 +319,26 @@ export default function Dashboard() {
       }
       
       // Wait a moment for database to finish writing
-      console.log('⏳ Waiting 500ms for database writes to complete...');
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Refresh today's ticks and summaries
-      console.log('🔄 Refreshing data...');
       await fetchTodayTicks();
       await fetchAvailableDates();
       
       // Auto-expand today's date in Historical Data to show new ticks
       const today = formatISTTime(getISTTime(), 'yyyy-MM-dd');
-      console.log('📅 Auto-expanding today:', today);
       const newExpandedDates = new Set(expandedDates);
       newExpandedDates.add(today);
       setExpandedDates(newExpandedDates);
       
       // Fetch and cache today's ticks for the expanded view
       try {
-        console.log('📡 Fetching today\'s ticks for history view...');
         const res = await fetch(`/api/ticks?date=${today}`);
         if (res.ok) {
           const data = await res.json();
-          console.log('✅ Loaded', data.count, 'ticks for today');
           const newMap = new Map(dateTicksMap);
           newMap.set(today, data.ticks || []);
           setDateTicksMap(newMap);
-        } else {
-          console.error('❌ Failed to fetch today\'s ticks:', res.status);
         }
       } catch (error) {
         console.error('Failed to fetch today\'s ticks for history:', error);
@@ -393,7 +355,7 @@ export default function Dashboard() {
         const errorMsg = error.message || 'Unexpected error during test';
         setLastFetchError(errorMsg);
         setTestProgress(`⚠ Test failed. Collected ${tickCount} ticks.`);
-        console.error('💥 TEST FAILED:', error);
+        console.error('Test failed:', error);
         
         setTimeout(() => {
           setTestProgress('');
@@ -420,13 +382,11 @@ export default function Dashboard() {
     if (status?.isWithinWindow && autoPollingEnabled && !isPolling) {
       setIsPolling(true);
       
-      console.log('🔄 Starting auto-polling (every 3 seconds)');
       const pollInterval = setInterval(async () => {
         await handleFetchNow();
       }, 3000); // Poll every 3 seconds
       
       return () => {
-        console.log('⏸️ Stopping auto-polling');
         clearInterval(pollInterval);
         setIsPolling(false);
       };
@@ -488,12 +448,6 @@ export default function Dashboard() {
     
     // Get current local time to calculate offset
     const fetchTime = Date.now();
-    
-    console.log('🕐 Clock sync:', {
-      serverTime: status.currentTime,
-      serverSeconds,
-      fetchTime: new Date(fetchTime).toISOString()
-    });
     
     const updateClock = () => {
       // Calculate elapsed seconds since fetch
@@ -716,8 +670,6 @@ export default function Dashboard() {
             </div>
             <button
               onClick={async () => {
-                console.log('🔄 Refreshing historical data...');
-                
                 // Refresh summaries
                 await fetchAvailableDates();
                 
@@ -734,7 +686,6 @@ export default function Dashboard() {
                   const res = await fetch(`/api/ticks?date=${today}`);
                   if (res.ok) {
                     const data = await res.json();
-                    console.log('✅ Refreshed today\'s data:', data.count, 'ticks');
                     const newMap = new Map<string, any[]>();
                     newMap.set(today, data.ticks || []);
                     setDateTicksMap(newMap);

@@ -23,8 +23,6 @@ export async function GET() {
       }, { status: 500 });
     }
     
-    console.log('📊 Daily summary: Found', data?.length || 0, 'total ticks in database');
-    
     // Group by date and calculate summaries
     const dateMap = new Map<string, {
       date: string;
@@ -37,15 +35,10 @@ export async function GET() {
       tickIds: number[];
     }>();
     
-    data?.forEach((row, index) => {
+    data?.forEach((row) => {
       // Convert UTC timestamp to IST date using formatInTimeZone
       const utcDate = new Date(row.fetched_at);
       const date = formatInTimeZone(utcDate, IST_TIMEZONE, 'yyyy-MM-dd');
-      
-      if (index < 5) {
-        const istFormatted = formatInTimeZone(utcDate, IST_TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
-        console.log(`  Sample ${index + 1}: ${row.fetched_at} (UTC) -> ${istFormatted} (IST) -> Date: ${date}`);
-      }
       
       if (!dateMap.has(date)) {
         dateMap.set(date, {
@@ -81,11 +74,6 @@ export async function GET() {
     const summaries = Array.from(dateMap.values()).sort((a, b) => 
       b.date.localeCompare(a.date)
     );
-    
-    console.log('📅 Grouped into', summaries.length, 'days:');
-    summaries.forEach(s => {
-      console.log(`  ${s.date}: ${s.tick_count} ticks`);
-    });
     
     return NextResponse.json({
       summaries,
