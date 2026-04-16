@@ -76,7 +76,7 @@ export default function Dashboard() {
   const fetchTodayTicks = async () => {
     try {
       const today = formatISTTime(getISTTime(), 'yyyy-MM-dd');
-      const url = `/api/ticks?limit=1000&date=${today}`;
+      const url = `/api/ticks?date=${today}`;
       
       const res = await fetch(url);
       
@@ -103,24 +103,32 @@ export default function Dashboard() {
     
     if (expandedDates.has(date)) {
       // Collapse
+      console.log('📁 Collapsing date:', date);
       newExpandedDates.delete(date);
       setExpandedDates(newExpandedDates);
     } else {
       // Expand
+      console.log('📂 Expanding date:', date);
       newExpandedDates.add(date);
       setExpandedDates(newExpandedDates);
       
       // Always fetch ticks (even if cached) to get latest data
       try {
-        const res = await fetch(`/api/ticks?limit=1000&date=${date}`);
+        console.log('📡 Fetching ticks for date:', date);
+        const res = await fetch(`/api/ticks?date=${date}`);
         if (res.ok) {
           const data = await res.json();
+          console.log('✅ Received', data.count, 'ticks for', date);
+          console.log('📊 Sample ticks:', data.ticks?.slice(0, 3));
           const newMap = new Map(dateTicksMap);
           newMap.set(date, data.ticks || []);
           setDateTicksMap(newMap);
+          console.log('💾 Stored', data.ticks?.length || 0, 'ticks in state');
+        } else {
+          console.error('❌ Failed to fetch ticks:', res.status, res.statusText);
         }
       } catch (error) {
-        console.error('Failed to fetch ticks for date:', date, error);
+        console.error('💥 Failed to fetch ticks for date:', date, error);
       }
     }
   };
@@ -357,7 +365,7 @@ export default function Dashboard() {
       // Fetch and cache today's ticks for the expanded view
       try {
         console.log('📡 Fetching today\'s ticks for history view...');
-        const res = await fetch(`/api/ticks?limit=1000&date=${today}`);
+        const res = await fetch(`/api/ticks?date=${today}`);
         if (res.ok) {
           const data = await res.json();
           console.log('✅ Loaded', data.count, 'ticks for today');
@@ -643,7 +651,7 @@ export default function Dashboard() {
                 
                 // Fetch fresh data for today
                 try {
-                  const res = await fetch(`/api/ticks?limit=1000&date=${today}`);
+                  const res = await fetch(`/api/ticks?date=${today}`);
                   if (res.ok) {
                     const data = await res.json();
                     console.log('✅ Refreshed today\'s data:', data.count, 'ticks');
@@ -726,7 +734,23 @@ export default function Dashboard() {
                     {isExpanded && (
                       <div className="bg-gray-900 p-4">
                         {dayTicks.length > 0 ? (
-                          <TickTable ticks={dayTicks} />
+                          <>
+                            <div className="mb-3 text-sm text-gray-400 flex items-center justify-between">
+                              <span>Showing {dayTicks.length} ticks (scroll to see all)</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleDayExpansion(summary.date);
+                                }}
+                                className="text-blue-400 hover:text-blue-300 text-xs"
+                              >
+                                🔄 Refresh
+                              </button>
+                            </div>
+                            <div className="max-h-[600px] overflow-y-auto border border-gray-700 rounded">
+                              <TickTable ticks={dayTicks} />
+                            </div>
+                          </>
                         ) : (
                           <div className="text-center py-8 text-gray-500">
                             <div className="animate-spin w-8 h-8 border-4 border-gray-600 border-t-blue-500 rounded-full mx-auto mb-3"></div>

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseBrowserClient } from '@/lib/supabase';
+import { formatInTimeZone } from 'date-fns-tz';
+
+const IST_TIMEZONE = 'Asia/Kolkata';
 
 export async function GET() {
   try {
@@ -35,14 +38,13 @@ export async function GET() {
     }>();
     
     data?.forEach((row, index) => {
-      // Convert UTC timestamp to IST date
+      // Convert UTC timestamp to IST date using formatInTimeZone
       const utcDate = new Date(row.fetched_at);
-      // Add 5:30 hours to convert UTC to IST
-      const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
-      const date = istDate.toISOString().split('T')[0];
+      const date = formatInTimeZone(utcDate, IST_TIMEZONE, 'yyyy-MM-dd');
       
       if (index < 5) {
-        console.log(`  Sample ${index + 1}: ${row.fetched_at} (UTC) -> ${istDate.toISOString()} (IST) -> Date: ${date}`);
+        const istFormatted = formatInTimeZone(utcDate, IST_TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+        console.log(`  Sample ${index + 1}: ${row.fetched_at} (UTC) -> ${istFormatted} (IST) -> Date: ${date}`);
       }
       
       if (!dateMap.has(date)) {
