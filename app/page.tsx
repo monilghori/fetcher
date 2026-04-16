@@ -5,6 +5,7 @@ import StatusBadge from '@/components/StatusBadge';
 import TickTable from '@/components/TickTable';
 import LTPChart from '@/components/LTPChart';
 import CountdownTimer from '@/components/CountdownTimer';
+import SettingsModal from '@/components/SettingsModal';
 import { Nifty50Tick } from '@/lib/types';
 import { formatISTTime, getISTTime } from '@/lib/time';
 
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [dateTicksMap, setDateTicksMap] = useState<Map<string, Nifty50Tick[]>>(new Map());
   const [clientSecondsUntilWindow, setClientSecondsUntilWindow] = useState<number>(0); // Client-side countdown
   const [clientCurrentTime, setClientCurrentTime] = useState<string>(''); // Client-side clock
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // Settings modal
   
   // Fetch status
   const fetchStatus = async () => {
@@ -489,7 +491,17 @@ export default function Dashboard() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-white">Nifty 50 Data Collector</h1>
-          <StatusBadge isActive={status?.isWithinWindow || false} />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-2"
+              title="Manage Dhan API credentials"
+            >
+              <span>⚙️</span>
+              <span>Settings</span>
+            </button>
+            <StatusBadge isActive={status?.isWithinWindow || false} />
+          </div>
         </div>
         
         {/* Status Cards */}
@@ -817,6 +829,9 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+      
+      {/* Settings Modal */}
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }
