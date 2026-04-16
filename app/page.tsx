@@ -109,19 +109,17 @@ export default function Dashboard() {
       newExpandedDates.add(date);
       setExpandedDates(newExpandedDates);
       
-      // Fetch ticks if not already loaded
-      if (!dateTicksMap.has(date)) {
-        try {
-          const res = await fetch(`/api/ticks?limit=1000&date=${date}`);
-          if (res.ok) {
-            const data = await res.json();
-            const newMap = new Map(dateTicksMap);
-            newMap.set(date, data.ticks || []);
-            setDateTicksMap(newMap);
-          }
-        } catch (error) {
-          console.error('Failed to fetch ticks for date:', date, error);
+      // Always fetch ticks (even if cached) to get latest data
+      try {
+        const res = await fetch(`/api/ticks?limit=1000&date=${date}`);
+        if (res.ok) {
+          const data = await res.json();
+          const newMap = new Map(dateTicksMap);
+          newMap.set(date, data.ticks || []);
+          setDateTicksMap(newMap);
         }
+      } catch (error) {
+        console.error('Failed to fetch ticks for date:', date, error);
       }
     }
   };
@@ -339,9 +337,38 @@ export default function Dashboard() {
         setLastFetchError(null);
       }
       
+      // Wait a moment for database to finish writing
+      console.log('⏳ Waiting 500ms for database writes to complete...');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       // Refresh today's ticks and summaries
+      console.log('🔄 Refreshing data...');
       await fetchTodayTicks();
       await fetchAvailableDates();
+      
+      // Auto-expand today's date in Historical Data to show new ticks
+      const today = formatISTTime(getISTTime(), 'yyyy-MM-dd');
+      console.log('📅 Auto-expanding today:', today);
+      const newExpandedDates = new Set(expandedDates);
+      newExpandedDates.add(today);
+      setExpandedDates(newExpandedDates);
+      
+      // Fetch and cache today's ticks for the expanded view
+      try {
+        console.log('📡 Fetching today\'s ticks for history view...');
+        const res = await fetch(`/api/ticks?limit=1000&date=${today}`);
+        if (res.ok) {
+          const data = await res.json();
+          console.log('✅ Loaded', data.count, 'ticks for today');
+          const newMap = new Map(dateTicksMap);
+          newMap.set(today, data.ticks || []);
+          setDateTicksMap(newMap);
+        } else {
+          console.error('❌ Failed to fetch today\'s ticks:', res.status);
+        }
+      } catch (error) {
+        console.error('Failed to fetch today\'s ticks for history:', error);
+      }
       
       // Clear message after 8 seconds
       setTimeout(() => {
@@ -573,10 +600,33 @@ export default function Dashboard() {
               </p>
             </div>
             <button
-              onClick={() => {
-                fetchAvailableDates();
-                setDateTicksMap(new Map());
-                setExpandedDates(new Set());
+              onClick={async () => {
+                console.log('🔄 Refreshing historical data...');
+                
+                // Refresh summaries
+                await fetchAvailableDates();
+                
+                // Get today's date
+                const today = formatISTTime(getISTTime(), 'yyyy-MM-dd');
+                
+                // Keep today expanded and refresh its data
+                const newExpandedDates = new Set<string>();
+                newExpandedDates.add(today);
+                setExpandedDates(newExpandedDates);
+                
+                // Fetch fresh data for today
+                try {
+                  const res = await fetch(`/api/ticks?limit=1000&date=${today}`);
+                  if (res.ok) {
+                    const data = await res.json();
+                    console.log('✅ Refreshed today\'s data:', data.count, 'ticks');
+                    const newMap = new Map<string, any[]>();
+                    newMap.set(today, data.ticks || []);
+                    setDateTicksMap(newMap);
+                  }
+                } catch (error) {
+                  console.error('Failed to refresh today\'s ticks:', error);
+                }
               }}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
             >
@@ -680,6 +730,8 @@ export default function Dashboard() {
             <span className="font-semibold text-gray-300">Auto-polling:</span> Every 3 seconds during active window
             <br />
             <span className="font-semibold text-purple-400">🧪 Test Mode:</span> Click "Test Mode" button to collect data for 1 minute anytime. Click "Cancel" to stop early.
+            <br />
+            <span className="font-semibold text-yellow-400">⚠️ Note:</span> Some fields (Open, High, Low, Volume, OI) may show "-" when market is closed or if Dhan API returns limited data. Change % is calculated from previous close when available.
           </p>
         </div>
       </div>

@@ -20,6 +20,8 @@ export async function GET() {
       }, { status: 500 });
     }
     
+    console.log('📊 Daily summary: Found', data?.length || 0, 'total ticks in database');
+    
     // Group by date and calculate summaries
     const dateMap = new Map<string, {
       date: string;
@@ -29,10 +31,19 @@ export async function GET() {
       opening_ltp: number;
       closing_ltp: number;
       ltps: number[];
+      tickIds: number[];
     }>();
     
-    data?.forEach((row) => {
-      const date = new Date(row.fetched_at).toISOString().split('T')[0];
+    data?.forEach((row, index) => {
+      // Convert UTC timestamp to IST date
+      const utcDate = new Date(row.fetched_at);
+      // Add 5:30 hours to convert UTC to IST
+      const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+      const date = istDate.toISOString().split('T')[0];
+      
+      if (index < 5) {
+        console.log(`  Sample ${index + 1}: ${row.fetched_at} (UTC) -> ${istDate.toISOString()} (IST) -> Date: ${date}`);
+      }
       
       if (!dateMap.has(date)) {
         dateMap.set(date, {
@@ -42,13 +53,15 @@ export async function GET() {
           low_ltp: row.ltp,
           opening_ltp: row.ltp,
           closing_ltp: row.ltp,
-          ltps: []
+          ltps: [],
+          tickIds: []
         });
       }
       
       const summary = dateMap.get(date)!;
       summary.tick_count++;
       summary.ltps.push(row.ltp);
+      summary.tickIds.push((row as any).id);
       summary.high_ltp = Math.max(summary.high_ltp, row.ltp);
       summary.low_ltp = Math.min(summary.low_ltp, row.ltp);
       summary.closing_ltp = row.ltp; // Latest (first in desc order)
@@ -60,11 +73,17 @@ export async function GET() {
         summary.opening_ltp = summary.ltps[summary.ltps.length - 1];
       }
       delete (summary as any).ltps; // Remove temporary array
+      delete (summary as any).tickIds; // Remove temporary array
     });
     
     const summaries = Array.from(dateMap.values()).sort((a, b) => 
       b.date.localeCompare(a.date)
     );
+    
+    console.log('📅 Grouped into', summaries.length, 'days:');
+    summaries.forEach(s => {
+      console.log(`  ${s.date}: ${s.tick_count} ticks`);
+    });
     
     return NextResponse.json({
       summaries,

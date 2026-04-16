@@ -5,23 +5,33 @@ import { formatISTTime, getISTTime } from '@/lib/time';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const limitParam = searchParams.get('limit');
     const date = searchParams.get('date'); // YYYY-MM-DD format
     
-    // Validate limit
-    if (isNaN(limit) || limit < 1 || limit > 1000) {
-      return NextResponse.json({ 
-        error: 'Invalid Parameter',
-        message: 'Limit must be between 1 and 1000'
-      }, { status: 400 });
+    // If date is provided, ignore limit and fetch all ticks for that day
+    // Otherwise use the limit parameter
+    let limit = 1000; // Default high limit
+    if (!date && limitParam) {
+      limit = parseInt(limitParam);
+      // Validate limit
+      if (isNaN(limit) || limit < 1 || limit > 1000) {
+        return NextResponse.json({ 
+          error: 'Invalid Parameter',
+          message: 'Limit must be between 1 and 1000'
+        }, { status: 400 });
+      }
     }
     
     const supabase = getSupabaseBrowserClient();
     let query = supabase
       .from('nifty50_ticks')
       .select('*')
-      .order('fetched_at', { ascending: false })
-      .limit(limit);
+      .order('fetched_at', { ascending: false });
+    
+    // Only apply limit if not filtering by date
+    if (!date) {
+      query = query.limit(limit);
+    }
     
     // Filter by date if provided
     if (date) {
@@ -33,9 +43,22 @@ export async function GET(request: NextRequest) {
         }, { status: 400 });
       }
       
-      const startOfDay = `${date}T00:00:00`;
-      const endOfDay = `${date}T23:59:59`;
-      query = query.gte('fetched_at', startOfDay).lte('fetched_at', endOfDay);
+      console.log('🔍 Filtering by date:', date);
+      
+      // Convert IST date to UTC range for database query
+      // The date parameter is in IST (e.g., "2026-04-16")
+      // We need to query for UTC timestamps that fall within this IST date
+      const startOfDayIST = new Date(`${date}T00:00:00+05:30`);
+      const endOfDayIST = new Date(`${date}T23:59:59+05:30`);
+      
+      const startOfDayUTC = startOfDayIST.toISOString();
+      const endOfDayUTC = endOfDayIST.toISOString();
+      
+      console.log('📅 Date range (IST):', date);
+      console.log('📅 Start (UTC):', startOfDayUTC);
+      console.log('📅 End (UTC):', endOfDayUTC);
+      
+      query = query.gte('fetched_at', startOfDayUTC).lte('fetched_at', endOfDayUTC);
     }
     
     const { data, error } = await query;
@@ -50,10 +73,19 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
     
+    console.log('✅ Query successful. Found', data?.length || 0, 'ticks');
+    if (date) {
+      console.log('📊 Sample tick timestamps (first 3):');
+      data?.slice(0, 3).forEach((tick, i) => {
+        console.log(`  ${i + 1}. ${tick.fetched_at} (UTC) -> ${new Date(tick.fetched_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)`);
+      });
+    }
+    
     return NextResponse.json({
       ticks: data,
       count: data?.length || 0,
-      currentTime: formatISTTime(getISTTime())
+      currentTime: formatISTTime(getISTTime()),
+      ...(date && { queriedDate: date })
     });
     
   } catch (error: any) {

@@ -105,12 +105,12 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
     
     // Extract values with fallbacks and detailed logging
     const ltp = niftyData.last_price || niftyData.ltp || niftyData.LTP || 0;
-    const prevClose = niftyData.prev_close || niftyData.close || niftyData.previous_close || niftyData.prevClose || 0;
-    const open = niftyData.open || niftyData.open_price || niftyData.OPEN || 0;
-    const high = niftyData.high || niftyData.high_price || niftyData.HIGH || 0;
-    const low = niftyData.low || niftyData.low_price || niftyData.LOW || 0;
-    const volume = niftyData.volume || niftyData.VOLUME || niftyData.vol || 0;
-    const oi = niftyData.oi || niftyData.open_interest || niftyData.OI || niftyData.openInterest || 0;
+    const prevClose = niftyData.prev_close || niftyData.close || niftyData.previous_close || niftyData.prevClose || niftyData.prev_day_close || 0;
+    const open = niftyData.open || niftyData.open_price || niftyData.OPEN || null;
+    const high = niftyData.high || niftyData.high_price || niftyData.HIGH || null;
+    const low = niftyData.low || niftyData.low_price || niftyData.LOW || null;
+    const volume = niftyData.volume || niftyData.VOLUME || niftyData.vol || null;
+    const oi = niftyData.oi || niftyData.open_interest || niftyData.OI || niftyData.openInterest || null;
     
     console.log('📊 Extracted values:');
     console.log('  LTP:', ltp);
@@ -136,25 +136,30 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
       console.log('⚠️ Using open price for calculation (prev_close not available)');
     } else {
       console.log('⚠️ Cannot calculate change - no reference price available');
+      console.log('⚠️ This usually happens when market is closed or API returns limited data');
     }
     
     // Transform to expected format
     const transformedData = {
       data: {
         last_price: ltp,
-        open: open || null,
-        high: high || null,
-        low: low || null,
+        open: open,
+        high: high,
+        low: low,
         close: prevClose || null,
-        volume: volume || null,
-        oi: oi || null,
+        volume: volume,
+        oi: oi,
         net_change: netChange,
         percent_change: percentChange
       }
     };
     
     console.log('✅ Transformed data:', JSON.stringify(transformedData, null, 2));
-    console.log('📊 Final calculations: LTP=' + ltp + ', PrevClose=' + prevClose + ', Change=' + netChange.toFixed(2) + ', %Change=' + percentChange.toFixed(2) + '%');
+    if (netChange !== 0 || percentChange !== 0) {
+      console.log('📊 Final calculations: LTP=' + ltp + ', Reference=' + (prevClose || open) + ', Change=' + netChange.toFixed(2) + ', %Change=' + percentChange.toFixed(2) + '%');
+    } else {
+      console.log('⚠️ No change calculated - limited data from API (market may be closed)');
+    }
     
     return transformedData as DhanQuoteResponse;
   } catch (error: any) {
