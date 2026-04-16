@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/supabase';
 import { fetchNifty50Quote } from '@/lib/dhan';
 import { formatISTTime, getISTTime } from '@/lib/time';
+import { CONFIG } from '@/lib/config';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
     
     let tickCount = 0;
     
-    // Collect data every 3 seconds for the specified duration
+    // Collect data at configured interval for the specified duration
     while (Date.now() < endTime) {
       try {
         // Fetch data from Dhan API
@@ -54,8 +55,8 @@ export async function POST(request: NextRequest) {
           });
         }
         
-        // Wait 3 seconds before next fetch
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Wait before next fetch (using configured interval)
+        await new Promise(resolve => setTimeout(resolve, CONFIG.POLLING_INTERVAL_MS));
         
       } catch (error: any) {
         errors.push({ 
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
           error: error.message 
         });
         // Continue even if one fetch fails
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, CONFIG.POLLING_INTERVAL_MS));
       }
     }
     

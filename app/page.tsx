@@ -11,6 +11,7 @@ import SettingsModal from '@/components/SettingsModal';
 import ActionButton from '@/components/ActionButton';
 import { Nifty50Tick } from '@/lib/types';
 import { formatISTTime, getISTTime } from '@/lib/time';
+import { CONFIG, formatInterval } from '@/lib/config';
 
 interface StatusData {
   isWithinWindow: boolean;
@@ -133,7 +134,8 @@ export default function Dashboard() {
   
   const handleTestCollect = async () => {
     if (isTestRunning) return;
-    const confirmed = confirm('This will collect Nifty 50 data every 3 seconds for 1 minute (about 20 ticks).\n\nContinue?');
+    const expectedTicks = Math.floor(CONFIG.TEST_MODE_DURATION_MS / CONFIG.POLLING_INTERVAL_MS);
+    const confirmed = confirm(`This will collect Nifty 50 data every ${formatInterval(CONFIG.POLLING_INTERVAL_MS)} for ${CONFIG.TEST_MODE_DURATION_MS / 1000} seconds (about ${expectedTicks} ticks).\n\nContinue?`);
     if (!confirmed) return;
     
     setIsTestRunning(true);
@@ -145,7 +147,7 @@ export default function Dashboard() {
     setTestAbortController(abortController);
     
     const startTime = Date.now();
-    const duration = 60 * 1000;
+    const duration = CONFIG.TEST_MODE_DURATION_MS;
     let tickCount = 0;
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 3;
@@ -176,7 +178,7 @@ export default function Dashboard() {
             tickCount++;
             setTestTicksCollected(tickCount);
             const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            const remaining = 60 - elapsed;
+            const remaining = Math.floor((CONFIG.TEST_MODE_DURATION_MS - (Date.now() - startTime)) / 1000);
             setTestProgress(`Collecting... ${tickCount} ticks (${remaining}s remaining)`);
             setLastFetchError(null);
             await fetchTodayTicks();
@@ -191,7 +193,7 @@ export default function Dashboard() {
         }
         
         await new Promise((resolve, reject) => {
-          const timeout = setTimeout(resolve, 3000);
+          const timeout = setTimeout(resolve, CONFIG.POLLING_INTERVAL_MS);
           abortController.signal.addEventListener('abort', () => {
             clearTimeout(timeout);
             reject(new Error('Aborted'));
@@ -245,7 +247,7 @@ export default function Dashboard() {
       setIsPolling(true);
       const pollInterval = setInterval(async () => {
         await handleFetchNow();
-      }, 3000);
+      }, CONFIG.POLLING_INTERVAL_MS);
       return () => {
         clearInterval(pollInterval);
         setIsPolling(false);
@@ -481,7 +483,7 @@ export default function Dashboard() {
                     transition={{ repeat: Infinity, duration: 1.5 }}
                     className="w-2 h-2 bg-positive rounded-full"
                   />
-                  Auto-polling active (3s)
+                  Auto-polling active ({formatInterval(CONFIG.POLLING_INTERVAL_MS)})
                 </motion.div>
               )}
               
@@ -593,7 +595,7 @@ export default function Dashboard() {
         >
           <span className="font-semibold text-gray-300">Collection Window:</span> 14:55 - 15:05 IST (Mon-Fri) • 
           <span className="font-semibold text-gray-300"> Data Source:</span> Dhan HQ Market Feed API • 
-          <span className="font-semibold text-gray-300"> Auto-polling:</span> Every 3 seconds during window
+          <span className="font-semibold text-gray-300"> Auto-polling:</span> Every {formatInterval(CONFIG.POLLING_INTERVAL_MS)} during window
         </motion.div>
       </div>
 
