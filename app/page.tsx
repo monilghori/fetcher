@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [ticks, setTicks] = useState<Nifty50Tick[]>([]);
   const [latestTick, setLatestTick] = useState<Nifty50Tick | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [autoPollingEnabled, setAutoPollingEnabled] = useState(true); // Manual control for auto-polling
   const [lastFetchError, setLastFetchError] = useState<string | null>(null);
   const [isTestRunning, setIsTestRunning] = useState(false);
   const [testProgress, setTestProgress] = useState<string>('');
@@ -404,19 +405,25 @@ export default function Dashboard() {
   
   // Auto-polling during window
   useEffect(() => {
-    if (status?.isWithinWindow && !isPolling) {
+    // Only auto-poll if within window AND auto-polling is enabled AND not already polling
+    if (status?.isWithinWindow && autoPollingEnabled && !isPolling) {
       setIsPolling(true);
       
+      console.log('🔄 Starting auto-polling (every 3 seconds)');
       const pollInterval = setInterval(async () => {
         await handleFetchNow();
       }, 3000); // Poll every 3 seconds
       
       return () => {
+        console.log('⏸️ Stopping auto-polling');
         clearInterval(pollInterval);
         setIsPolling(false);
       };
+    } else if (isPolling && (!status?.isWithinWindow || !autoPollingEnabled)) {
+      // Stop polling if window closed or auto-polling disabled
+      setIsPolling(false);
     }
-  }, [status?.isWithinWindow]);
+  }, [status?.isWithinWindow, autoPollingEnabled]);
   
   // Initial load and periodic refresh
   useEffect(() => {
@@ -505,6 +512,20 @@ export default function Dashboard() {
             Fetch Now
           </button>
           
+          {/* Auto-Polling Toggle */}
+          {status?.isWithinWindow && (
+            <button
+              onClick={() => setAutoPollingEnabled(!autoPollingEnabled)}
+              className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
+                autoPollingEnabled
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-600 hover:bg-gray-700 text-white'
+              }`}
+            >
+              {autoPollingEnabled ? '⏸️ Stop Auto-Polling' : '▶️ Start Auto-Polling'}
+            </button>
+          )}
+          
           {/* Test Mode Button */}
           {!isTestRunning ? (
             <button
@@ -533,10 +554,16 @@ export default function Dashboard() {
             </div>
           )}
           
-          {isPolling && (
+          {isPolling && autoPollingEnabled && (
             <div className="text-sm text-green-400 flex items-center gap-2">
               <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
               Auto-polling active (every 3s)
+            </div>
+          )}
+          {!autoPollingEnabled && status?.isWithinWindow && (
+            <div className="text-sm text-yellow-400 flex items-center gap-2">
+              <span className="w-2 h-2 bg-yellow-400 rounded-full" />
+              Auto-polling paused
             </div>
           )}
           {testProgress && (
@@ -727,7 +754,7 @@ export default function Dashboard() {
             <br />
             <span className="font-semibold text-gray-300">Data Source:</span> Dhan HQ Market Feed API
             <br />
-            <span className="font-semibold text-gray-300">Auto-polling:</span> Every 3 seconds during active window
+            <span className="font-semibold text-gray-300">Auto-polling:</span> Automatically fetches data every 3 seconds during active window. Use the "Stop/Start Auto-Polling" button to control it manually.
             <br />
             <span className="font-semibold text-purple-400">🧪 Test Mode:</span> Click "Test Mode" button to collect data for 1 minute anytime. Click "Cancel" to stop early.
             <br />
