@@ -34,6 +34,7 @@ export async function GET() {
       isWithinWindow,
       currentTime: formatISTTime(currentTime),
       nextWindowStart: formatISTTime(getNextWindowStart()),
+      nextWindowStartTimestamp: getNextWindowStart().getTime(), // Add timestamp for client-side countdown
       secondsUntilWindow: isWithinWindow ? 0 : getSecondsUntilWindow(),
       todayTickCount: count || 0
     });

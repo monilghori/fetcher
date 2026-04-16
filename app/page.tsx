@@ -12,6 +12,7 @@ interface StatusData {
   isWithinWindow: boolean;
   currentTime: string;
   nextWindowStart: string;
+  nextWindowStartTimestamp?: number; // Timestamp for client-side countdown
   secondsUntilWindow: number;
   todayTickCount: number;
 }
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [dailySummaries, setDailySummaries] = useState<any[]>([]);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [dateTicksMap, setDateTicksMap] = useState<Map<string, Nifty50Tick[]>>(new Map());
+  const [clientSecondsUntilWindow, setClientSecondsUntilWindow] = useState<number>(0); // Client-side countdown
   
   // Fetch status
   const fetchStatus = async () => {
@@ -446,6 +448,30 @@ export default function Dashboard() {
     };
   }, []);
   
+  // Client-side countdown calculator
+  useEffect(() => {
+    if (!status?.nextWindowStartTimestamp) {
+      setClientSecondsUntilWindow(status?.secondsUntilWindow || 0);
+      return;
+    }
+    
+    // Calculate initial seconds
+    const calculateSeconds = () => {
+      const now = Date.now();
+      const seconds = Math.floor((status.nextWindowStartTimestamp! - now) / 1000);
+      return Math.max(0, seconds);
+    };
+    
+    setClientSecondsUntilWindow(calculateSeconds());
+    
+    // Update every second
+    const countdownInterval = setInterval(() => {
+      setClientSecondsUntilWindow(calculateSeconds());
+    }, 1000);
+    
+    return () => clearInterval(countdownInterval);
+  }, [status?.nextWindowStartTimestamp]);
+  
   // Calculate change percent from opening price (first tick of the day)
   const openingPrice = ticks.length > 0 ? ticks[ticks.length - 1].ltp : 0;
   const changePercent = latestTick && openingPrice > 0 
@@ -503,7 +529,7 @@ export default function Dashboard() {
             {status?.isWithinWindow ? (
               <div className="text-2xl font-semibold text-green-400">LIVE</div>
             ) : (
-              <CountdownTimer seconds={status?.secondsUntilWindow || 0} />
+              <CountdownTimer seconds={clientSecondsUntilWindow} />
             )}
           </div>
         </div>
