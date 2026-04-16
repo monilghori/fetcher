@@ -5,7 +5,19 @@ module.exports = {
         './components/**/*.{js,ts,jsx,tsx,mdx}',
     ],
     theme: {
-        extend: {},
+        extend: {
+            colors: {
+                background: '#0D0F14',
+                card: '#141720',
+                positive: '#00E676',
+                negative: '#FF5252',
+                accent: '#2979FF',
+                warning: '#FFC107',
+            },
+            fontFamily: {
+                sans: ['Inter', 'sans-serif'],
+            },
+        },
     },
     plugins: [],
 }
