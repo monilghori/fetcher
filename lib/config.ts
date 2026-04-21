@@ -25,6 +25,31 @@ export const CONFIG = {
   TEST_MODE_DURATION_MS: 6000,
 
   /**
+   * Rate limit handling
+   */
+  RATE_LIMIT: {
+    /**
+     * Initial delay after hitting rate limit (ms)
+     */
+    INITIAL_BACKOFF_MS: 10000,
+    
+    /**
+     * Maximum backoff delay (ms)
+     */
+    MAX_BACKOFF_MS: 120000,
+    
+    /**
+     * Backoff multiplier for exponential backoff
+     */
+    BACKOFF_MULTIPLIER: 2,
+    
+    /**
+     * Maximum number of retry attempts
+     */
+    MAX_RETRIES: 3,
+  },
+
+  /**
    * Collection window times (IST)
    */
   COLLECTION_WINDOW: {

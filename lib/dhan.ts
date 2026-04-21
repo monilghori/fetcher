@@ -1,6 +1,7 @@
 import { DhanQuoteResponse } from './types';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { getSupabaseBrowserClient } from './supabase';
+import { CONFIG } from './config';
 
 const DHAN_API_BASE = 'https://api.dhan.co';
 const NIFTY50_SECURITY_ID = 13;
@@ -9,6 +10,42 @@ const NIFTY50_SECURITY_ID = 13;
 const agent = process.env.NODE_ENV === 'development' 
   ? new Agent({ connect: { rejectUnauthorized: false } })
   : undefined;
+
+// Rate limit state
+let lastRateLimitTime: number | null = null;
+let currentBackoffMs: number = CONFIG.RATE_LIMIT.INITIAL_BACKOFF_MS;
+
+/**
+ * Check if we're currently in a rate limit backoff period
+ */
+function isInRateLimitBackoff(): { inBackoff: boolean; remainingMs: number } {
+  if (!lastRateLimitTime) {
+    return { inBackoff: false, remainingMs: 0 };
+  }
+  
+  const elapsed = Date.now() - lastRateLimitTime;
+  const remainingMs = currentBackoffMs - elapsed;
+  
+  if (remainingMs > 0) {
+    return { inBackoff: true, remainingMs };
+  }
+  
+  // Backoff period expired, reset
+  lastRateLimitTime = null;
+  currentBackoffMs = CONFIG.RATE_LIMIT.INITIAL_BACKOFF_MS;
+  return { inBackoff: false, remainingMs: 0 };
+}
+
+/**
+ * Record a rate limit hit and calculate next backoff
+ */
+function recordRateLimit() {
+  lastRateLimitTime = Date.now();
+  currentBackoffMs = Math.min(
+    currentBackoffMs * CONFIG.RATE_LIMIT.BACKOFF_MULTIPLIER,
+    CONFIG.RATE_LIMIT.MAX_BACKOFF_MS
+  );
+}
 
 // Fetch credentials from database or fallback to env variables
 async function getDhanCredentials(): Promise<{ accessToken: string; clientId: string }> {
@@ -38,6 +75,13 @@ async function getDhanCredentials(): Promise<{ accessToken: string; clientId: st
 }
 
 export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
+  // Check if we're in a rate limit backoff period
+  const { inBackoff, remainingMs } = isInRateLimitBackoff();
+  if (inBackoff) {
+    const remainingSec = Math.ceil(remainingMs / 1000);
+    throw new Error(`Rate limit cooldown active. Please wait ${remainingSec} seconds before trying again.`);
+  }
+  
   const { accessToken, clientId } = await getDhanCredentials();
   
   if (!accessToken || !clientId) {
@@ -79,8 +123,11 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
         errorMessage = 'Access Token Expired';
         errorDetails = 'Your Dhan access token has expired or been revoked. Please generate a new token from your Dhan account and update it in Settings.';
       } else if (response.status === 429) {
+        // Record rate limit hit
+        recordRateLimit();
+        const waitSec = Math.ceil(currentBackoffMs / 1000);
         errorMessage = 'Rate Limit Exceeded';
-        errorDetails = 'Too many API requests. Please wait a few moments before trying again.';
+        errorDetails = `Too many API requests. Automatic cooldown activated for ${waitSec} seconds. Please wait before trying again.`;
       } else if (response.status >= 500) {
         errorMessage = 'Dhan API Unavailable';
         errorDetails = `Dhan API server error (${response.status}). The service may be temporarily down. Please try again later.`;
