@@ -16,13 +16,13 @@ export const CONFIG = {
    * 
    * Note: Lower intervals = more data points but higher API usage
    */
-  POLLING_INTERVAL_MS: 2000,
+  POLLING_INTERVAL_MS: 3000,
 
   /**
    * Test mode duration in milliseconds
    * Default: 60000ms (60 seconds / 1 minute)
    */
-  TEST_MODE_DURATION_MS: 6000,
+  TEST_MODE_DURATION_MS: 60000,
 
   /**
    * Rate limit handling
