@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Settings, TrendingUp, TrendingDown, Activity, Clock, Calendar } from 'lucide-react';
 import StatusCard from '@/components/StatusCard';
@@ -39,27 +39,19 @@ export default function Dashboard() {
   const [clientSecondsUntilWindow, setClientSecondsUntilWindow] = useState<number>(0);
   const [clientCurrentTime, setClientCurrentTime] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [previousLTP, setPreviousLTP] = useState<number | null>(null);
   
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/status');
       if (!res.ok) return;
       const data = await res.json();
-      console.log('Status data received:', {
-        currentTime: data.currentTime,
-        nextWindowStart: data.nextWindowStart,
-        nextWindowStartTimestamp: data.nextWindowStartTimestamp,
-        secondsUntilWindow: data.secondsUntilWindow,
-        isWithinWindow: data.isWithinWindow
-      });
       setStatus(data);
     } catch (error) {
       console.error('Failed to fetch status:', error);
     }
-  };
+  }, []);
   
-  const fetchAvailableDates = async () => {
+  const fetchAvailableDates = useCallback(async () => {
     try {
       const res = await fetch('/api/daily-summary');
       if (res.ok) {
@@ -69,9 +61,9 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Failed to fetch available dates:', error);
     }
-  };
+  }, []);
   
-  const fetchTodayTicks = async () => {
+  const fetchTodayTicks = useCallback(async () => {
     try {
       const today = formatISTTime(getISTTime(), 'yyyy-MM-dd');
       const res = await fetch(`/api/ticks?date=${today}`);
@@ -79,40 +71,38 @@ export default function Dashboard() {
       const data = await res.json();
       setTicks(data.ticks || []);
       if (data.ticks && data.ticks.length > 0) {
-        const newLatest = data.ticks[0];
-        if (latestTick && newLatest.ltp !== latestTick.ltp) {
-          setPreviousLTP(latestTick.ltp);
-        }
-        setLatestTick(newLatest);
+        setLatestTick(data.ticks[0]);
       }
     } catch (error) {
       console.error('Failed to fetch ticks:', error);
     }
-  };
+  }, []);
+
   
-  const toggleDayExpansion = async (date: string) => {
-    const newExpandedDates = new Set(expandedDates);
-    if (expandedDates.has(date)) {
-      newExpandedDates.delete(date);
-      setExpandedDates(newExpandedDates);
-    } else {
-      newExpandedDates.add(date);
-      setExpandedDates(newExpandedDates);
-      try {
-        const res = await fetch(`/api/ticks?date=${date}`);
-        if (res.ok) {
-          const data = await res.json();
-          const newMap = new Map(dateTicksMap);
-          newMap.set(date, data.ticks || []);
-          setDateTicksMap(newMap);
-        }
-      } catch (error) {
-        console.error('Failed to fetch ticks for date:', date, error);
+  const toggleDayExpansion = useCallback(async (date: string) => {
+    setExpandedDates(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(date)) {
+        newSet.delete(date);
+        return newSet;
+      } else {
+        newSet.add(date);
+        fetch(`/api/ticks?date=${date}`)
+          .then(res => res.json())
+          .then(data => {
+            setDateTicksMap(prevMap => {
+              const newMap = new Map(prevMap);
+              newMap.set(date, data.ticks || []);
+              return newMap;
+            });
+          })
+          .catch(error => console.error('Failed to fetch ticks for date:', date, error));
+        return newSet;
       }
-    }
-  };
+    });
+  }, []);
   
-  const handleFetchNow = async () => {
+  const handleFetchNow = useCallback(async () => {
     if (!status?.isWithinWindow) {
       setLastFetchError('Can only fetch during collection window (14:55-15:05 IST, Mon-Fri)');
       setTimeout(() => setLastFetchError(null), 5000);
@@ -127,40 +117,20 @@ export default function Dashboard() {
       });
       const data = await res.json();
       if (!res.ok) {
-        let errorMsg = data.message || 'Failed to fetch data';
-        
-        // Enhanced error messages
-        if (errorMsg.includes('Token Expired') || errorMsg.includes('expired')) {
-          errorMsg = '🔒 Access Token Expired: Please update your Dhan credentials in Settings';
-        } else if (errorMsg.includes('Authentication Failed') || errorMsg.includes('401')) {
-          errorMsg = '❌ Authentication Failed: Invalid credentials. Check Settings';
-        } else if (errorMsg.includes('Rate Limit') || errorMsg.includes('429')) {
-          errorMsg = '⏱️ Rate Limit: Too many requests. Please wait a moment';
-        } else if (errorMsg.includes('Network') || errorMsg.includes('ECONNREFUSED')) {
-          errorMsg = '🌐 Network Error: Unable to connect to Dhan API';
-        }
-        
-        setLastFetchError(errorMsg);
+        setLastFetchError(data.message || 'Failed to fetch data');
         setTimeout(() => setLastFetchError(null), 8000);
         return;
       }
       await fetchTodayTicks();
       setLastFetchError(null);
     } catch (error: any) {
-      let errorMsg = 'Network error. Please check your connection.';
-      
-      if (error.message?.includes('fetch')) {
-        errorMsg = '🌐 Unable to reach server. Is the app running?';
-      } else if (error.message) {
-        errorMsg = error.message;
-      }
-      
-      setLastFetchError(errorMsg);
+      setLastFetchError('Network error. Please check your connection.');
       setTimeout(() => setLastFetchError(null), 8000);
     }
-  };
+  }, [status?.isWithinWindow, fetchTodayTicks]);
+
   
-  const handleTestCollect = async () => {
+  const handleTestCollect = useCallback(async () => {
     if (isTestRunning) return;
     const expectedTicks = Math.floor(CONFIG.TEST_MODE_DURATION_MS / CONFIG.POLLING_INTERVAL_MS);
     const confirmed = confirm(`This will collect Nifty 50 data every ${formatInterval(CONFIG.POLLING_INTERVAL_MS)} for ${CONFIG.TEST_MODE_DURATION_MS / 1000} seconds (about ${expectedTicks} ticks).\n\nContinue?`);
@@ -205,7 +175,6 @@ export default function Dashboard() {
             consecutiveErrors = 0;
             tickCount++;
             setTestTicksCollected(tickCount);
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
             const remaining = Math.floor((CONFIG.TEST_MODE_DURATION_MS - (Date.now() - startTime)) / 1000);
             setTestProgress(`Collecting... ${tickCount} ticks (${remaining}s remaining)`);
             setLastFetchError(null);
@@ -262,20 +231,28 @@ export default function Dashboard() {
       setTestAbortController(null);
       setTestTicksCollected(0);
     }
-  };
+  }, [isTestRunning, fetchTodayTicks, fetchAvailableDates]);
   
-  const handleCancelTest = () => {
+  const handleCancelTest = useCallback(() => {
     if (testAbortController) {
       testAbortController.abort();
     }
-  };
+  }, [testAbortController]);
+
   
+  // Auto-polling effect
   useEffect(() => {
     if (status?.isWithinWindow && autoPollingEnabled && !isPolling) {
       setIsPolling(true);
-      const pollInterval = setInterval(async () => {
-        await handleFetchNow();
+      const pollInterval = setInterval(() => {
+        fetch('/api/fetch-tick', {
+          method: 'POST',
+          headers: { 'x-cron-secret': process.env.NEXT_PUBLIC_CRON_SECRET || '' }
+        })
+          .then(res => res.ok ? fetchTodayTicks() : null)
+          .catch(err => console.error('Auto-fetch error:', err));
       }, CONFIG.POLLING_INTERVAL_MS);
+      
       return () => {
         clearInterval(pollInterval);
         setIsPolling(false);
@@ -283,44 +260,56 @@ export default function Dashboard() {
     } else if (isPolling && (!status?.isWithinWindow || !autoPollingEnabled)) {
       setIsPolling(false);
     }
-  }, [status?.isWithinWindow, autoPollingEnabled]);
+  }, [status?.isWithinWindow, autoPollingEnabled, isPolling, fetchTodayTicks]);
   
+  // Initial load
   useEffect(() => {
     fetchStatus();
     fetchAvailableDates();
     fetchTodayTicks();
     const statusInterval = setInterval(fetchStatus, 10000);
     return () => clearInterval(statusInterval);
-  }, []);
+  }, [fetchStatus, fetchAvailableDates, fetchTodayTicks]);
   
+  // Countdown timer
   useEffect(() => {
     if (!status?.nextWindowStartTimestamp) {
-      console.log('No nextWindowStartTimestamp, using secondsUntilWindow:', status?.secondsUntilWindow);
       setClientSecondsUntilWindow(status?.secondsUntilWindow || 0);
       return;
     }
+    
     const calculateSeconds = () => {
       const now = Date.now();
       const seconds = Math.floor((status.nextWindowStartTimestamp! - now) / 1000);
-      console.log('Calculating countdown - Now:', now, 'Target:', status.nextWindowStartTimestamp, 'Seconds:', seconds);
       return Math.max(0, seconds);
     };
+    
     setClientSecondsUntilWindow(calculateSeconds());
+    
     const countdownInterval = setInterval(() => {
       const newSeconds = calculateSeconds();
       setClientSecondsUntilWindow(newSeconds);
-      // Refresh status if countdown reaches zero to get new window time
       if (newSeconds === 0) {
-        console.log('Countdown reached zero, refreshing status');
         fetchStatus();
       }
     }, 1000);
+    
     return () => clearInterval(countdownInterval);
-  }, [status?.nextWindowStartTimestamp]);
+  }, [status?.nextWindowStartTimestamp, status?.secondsUntilWindow, fetchStatus]);
   
+  // Client-side clock
   useEffect(() => {
-    if (!status?.currentTime) return;
+    if (!status?.currentTime) {
+      setClientCurrentTime('');
+      return;
+    }
+    
     const [datePart, timePart] = status.currentTime.split(' ');
+    if (!timePart) {
+      setClientCurrentTime('');
+      return;
+    }
+    
     const [hours, minutes, seconds] = timePart.split(':').map(Number);
     const serverSeconds = hours * 3600 + minutes * 60 + seconds;
     const fetchTime = Date.now();
@@ -349,15 +338,12 @@ export default function Dashboard() {
   const isPositive = changePercent >= 0;
   
   const formatCountdown = (seconds: number) => {
-    if (seconds <= 0) {
-      // If countdown is zero or negative, show a loading state
-      return '--:--:--';
-    }
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
+
   
   return (
     <div className="min-h-screen bg-background">
