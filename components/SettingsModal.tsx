@@ -13,13 +13,18 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [accessToken, setAccessToken] = useState('');
   const [clientId, setClientId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [isTestingCurrent, setIsTestingCurrent] = useState(false);
+  const [currentCredentialsStatus, setCurrentCredentialsStatus] = useState<'unknown' | 'valid' | 'invalid' | 'testing'>('unknown');
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning' | 'info'; text: string } | null>(null);
   const [currentSettings, setCurrentSettings] = useState<any>(null);
   const [showHelp, setShowHelp] = useState(false);
   
   useEffect(() => {
     if (isOpen) {
       fetchCurrentSettings();
+      setCurrentCredentialsStatus('unknown');
+      setMessage(null);
     }
   }, [isOpen]);
   
@@ -29,9 +34,68 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       if (res.ok) {
         const data = await res.json();
         setCurrentSettings(data);
+        
+        // Automatically validate existing credentials if they exist
+        if (data.hasAccessToken && data.hasClientId) {
+          await validateCurrentCredentials();
+        } else {
+          setCurrentCredentialsStatus('invalid');
+        }
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error);
+    }
+  };
+  
+  const validateCurrentCredentials = async () => {
+    setIsTestingCurrent(true);
+    setCurrentCredentialsStatus('testing');
+    
+    try {
+      // Get the actual credentials from the database
+      const res = await fetch('/api/settings');
+      if (!res.ok) {
+        setCurrentCredentialsStatus('invalid');
+        return;
+      }
+      
+      const data = await res.json();
+      if (!data.hasAccessToken || !data.hasClientId) {
+        setCurrentCredentialsStatus('invalid');
+        return;
+      }
+      
+      // Validate by making a test API call
+      const validateRes = await fetch('/api/validate-current-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const validateData = await validateRes.json();
+      
+      if (validateData.valid) {
+        setCurrentCredentialsStatus('valid');
+      } else {
+        setCurrentCredentialsStatus('invalid');
+        
+        // Show specific error message
+        if (validateData.errorCode === 'TOKEN_EXPIRED') {
+          setMessage({ 
+            type: 'warning', 
+            text: '⚠️ Current credentials expired. Please update with new token.' 
+          });
+        } else if (validateData.errorCode === 'INVALID_TOKEN') {
+          setMessage({ 
+            type: 'error', 
+            text: '❌ Current credentials are invalid. Please update them.' 
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to validate current credentials:', error);
+      setCurrentCredentialsStatus('unknown');
+    } finally {
+      setIsTestingCurrent(false);
     }
   };
   
@@ -41,8 +105,58 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       return;
     }
     
+    // First, let's test what the API actually returns
+    setIsValidating(true);
+    setMessage({ type: 'info', text: 'Testing API endpoints...' });
+    
+    try {
+      const testRes = await fetch('/api/test-validation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken, clientId })
+      });
+      
+      const testData = await testRes.json();
+      console.log('=== API Test Results ===');
+      console.log(testData);
+      
+      // Check which endpoint worked
+      const workingTest = testData.tests?.find((t: any) => t.status === 200);
+      
+      if (!workingTest) {
+        setIsValidating(false);
+        const firstError = testData.tests?.[0];
+        if (firstError?.status === 403) {
+          setMessage({ 
+            type: 'error', 
+            text: '🔒 Access Token Expired or Invalid. Response: ' + firstError.body 
+          });
+        } else if (firstError?.status === 401) {
+          setMessage({ 
+            type: 'error', 
+            text: '❌ Authentication Failed. Response: ' + firstError.body 
+          });
+        } else {
+          setMessage({ 
+            type: 'error', 
+            text: 'All API tests failed. Check console for details.' 
+          });
+        }
+        return;
+      }
+      
+      console.log('✓ Working endpoint:', workingTest.endpoint, workingTest.segment);
+      setMessage({ type: 'success', text: `✓ Credentials validated using ${workingTest.endpoint}!` });
+      
+    } catch (error: any) {
+      setIsValidating(false);
+      setMessage({ type: 'error', text: 'Test failed: ' + error.message });
+      return;
+    }
+    
+    setIsValidating(false);
     setIsSaving(true);
-    setMessage(null);
+    setMessage({ type: 'info', text: 'Saving credentials...' });
     
     try {
       const res = await fetch('/api/settings', {
@@ -58,7 +172,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         return;
       }
       
-      setMessage({ type: 'success', text: 'Credentials updated successfully!' });
+      setMessage({ type: 'success', text: '✓ Credentials validated and saved successfully!' });
       setAccessToken('');
       setClientId('');
       await fetchCurrentSettings();
@@ -115,25 +229,57 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   animate={{ opacity: 1, y: 0 }}
                   className="p-4 bg-gray-900/50 rounded-xl border border-gray-800"
                 >
-                  <div className="text-sm text-gray-400 mb-3 font-medium">Current Configuration</div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm text-gray-400 font-medium">Current Configuration</div>
+                    {currentCredentialsStatus === 'testing' && (
+                      <div className="flex items-center gap-2 text-xs text-accent">
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                          className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full"
+                        />
+                        Validating...
+                      </div>
+                    )}
+                    {currentCredentialsStatus === 'valid' && (
+                      <div className="flex items-center gap-2 text-xs text-positive">
+                        <CheckCircle className="w-4 h-4" />
+                        Valid & Working
+                      </div>
+                    )}
+                    {currentCredentialsStatus === 'invalid' && (
+                      <div className="flex items-center gap-2 text-xs text-negative">
+                        <AlertCircle className="w-4 h-4" />
+                        Invalid or Expired
+                      </div>
+                    )}
+                  </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${currentSettings.hasAccessToken ? 'bg-positive' : 'bg-negative'}`} />
+                      <div className={`w-2 h-2 rounded-full ${
+                        currentCredentialsStatus === 'valid' ? 'bg-positive' : 
+                        currentCredentialsStatus === 'invalid' ? 'bg-negative' : 
+                        'bg-gray-500'
+                      }`} />
                       <Lock className="w-4 h-4 text-gray-500" />
                       <span className="text-white text-sm">
                         Access Token: {currentSettings.hasAccessToken ? (
-                          <span className="text-positive font-mono">{currentSettings.accessTokenPreview}</span>
+                          <span className="text-gray-400 font-mono">{currentSettings.accessTokenPreview}</span>
                         ) : (
                           <span className="text-negative">Not set</span>
                         )}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${currentSettings.hasClientId ? 'bg-positive' : 'bg-negative'}`} />
+                      <div className={`w-2 h-2 rounded-full ${
+                        currentCredentialsStatus === 'valid' ? 'bg-positive' : 
+                        currentCredentialsStatus === 'invalid' ? 'bg-negative' : 
+                        'bg-gray-500'
+                      }`} />
                       <User className="w-4 h-4 text-gray-500" />
                       <span className="text-white text-sm">
                         Client ID: {currentSettings.hasClientId ? (
-                          <span className="text-positive font-mono">{currentSettings.clientIdPreview}</span>
+                          <span className="text-gray-400 font-mono">{currentSettings.clientIdPreview}</span>
                         ) : (
                           <span className="text-negative">Not set</span>
                         )}
@@ -187,15 +333,31 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       className={`p-4 rounded-lg flex items-center gap-3 ${
                         message.type === 'success' 
                           ? 'bg-positive/10 border border-positive/30' 
+                          : message.type === 'warning'
+                          ? 'bg-warning/10 border border-warning/30'
+                          : message.type === 'info'
+                          ? 'bg-accent/10 border border-accent/30'
                           : 'bg-negative/10 border border-negative/30'
                       }`}
                     >
                       {message.type === 'success' ? (
-                        <CheckCircle className="w-5 h-5 text-positive" />
+                        <CheckCircle className="w-5 h-5 text-positive flex-shrink-0" />
+                      ) : message.type === 'warning' ? (
+                        <AlertCircle className="w-5 h-5 text-warning flex-shrink-0" />
+                      ) : message.type === 'info' ? (
+                        <HelpCircle className="w-5 h-5 text-accent flex-shrink-0" />
                       ) : (
-                        <AlertCircle className="w-5 h-5 text-negative" />
+                        <AlertCircle className="w-5 h-5 text-negative flex-shrink-0" />
                       )}
-                      <span className={message.type === 'success' ? 'text-positive' : 'text-negative'}>
+                      <span className={`text-sm ${
+                        message.type === 'success' 
+                          ? 'text-positive' 
+                          : message.type === 'warning'
+                          ? 'text-warning'
+                          : message.type === 'info'
+                          ? 'text-accent'
+                          : 'text-negative'
+                      }`}>
                         {message.text}
                       </span>
                     </motion.div>
@@ -207,20 +369,21 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={handleSave}
-                    disabled={isSaving}
+                    disabled={isSaving || isValidating}
                     className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all ${
-                      isSaving
+                      isSaving || isValidating
                         ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                         : 'bg-accent hover:bg-accent/90 text-white shadow-lg shadow-accent/20'
                     }`}
                   >
-                    {isSaving ? 'Saving...' : 'Save Credentials'}
+                    {isValidating ? 'Validating...' : isSaving ? 'Saving...' : 'Validate & Save Credentials'}
                   </motion.button>
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={onClose}
-                    className="px-6 py-3 rounded-lg font-semibold bg-gray-800 hover:bg-gray-700 text-white transition-colors"
+                    disabled={isSaving || isValidating}
+                    className="px-6 py-3 rounded-lg font-semibold bg-gray-800 hover:bg-gray-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </motion.button>

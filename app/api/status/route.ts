@@ -6,6 +6,15 @@ export async function GET() {
   try {
     const isWithinWindow = isWithinCollectionWindow();
     const currentTime = getISTTime();
+    const nextWindowStart = getNextWindowStart();
+    const nextWindowStartTimestamp = nextWindowStart.getTime();
+    const secondsUntilWindow = isWithinWindow ? 0 : getSecondsUntilWindow();
+    
+    // Log for debugging on Vercel
+    console.log('Status API - IST Time:', formatISTTime(currentTime));
+    console.log('Status API - Next Window:', formatISTTime(nextWindowStart));
+    console.log('Status API - Next Window Timestamp:', nextWindowStartTimestamp);
+    console.log('Status API - Seconds Until Window:', secondsUntilWindow);
     
     // Get today's tick count
     const supabase = getSupabaseBrowserClient();
@@ -19,12 +28,13 @@ export async function GET() {
     
     if (error) {
       console.error('Supabase count error:', error);
-      // Return status without count on error
+      // Return status without count on error but WITH timestamp
       return NextResponse.json({
         isWithinWindow,
         currentTime: formatISTTime(currentTime),
-        nextWindowStart: formatISTTime(getNextWindowStart()),
-        secondsUntilWindow: isWithinWindow ? 0 : getSecondsUntilWindow(),
+        nextWindowStart: formatISTTime(nextWindowStart),
+        nextWindowStartTimestamp,
+        secondsUntilWindow,
         todayTickCount: 0,
         warning: 'Could not fetch tick count from database'
       });
@@ -33,9 +43,9 @@ export async function GET() {
     return NextResponse.json({
       isWithinWindow,
       currentTime: formatISTTime(currentTime),
-      nextWindowStart: formatISTTime(getNextWindowStart()),
-      nextWindowStartTimestamp: getNextWindowStart().getTime(), // Add timestamp for client-side countdown
-      secondsUntilWindow: isWithinWindow ? 0 : getSecondsUntilWindow(),
+      nextWindowStart: formatISTTime(nextWindowStart),
+      nextWindowStartTimestamp,
+      secondsUntilWindow,
       todayTickCount: count || 0
     });
     

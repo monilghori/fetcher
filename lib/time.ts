@@ -37,35 +37,46 @@ export function isWithinCollectionWindow(): boolean {
 export function getNextWindowStart(): Date {
   const now = new Date();
   
-  // Convert current UTC to IST by adding 5.5 hours
-  const nowIST = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-  
-  // Get IST time components
-  const istHours = nowIST.getUTCHours();
-  const istMinutes = nowIST.getUTCMinutes();
+  // Get current time in IST
+  const istDate = toZonedTime(now, IST_TIMEZONE);
+  const istHours = istDate.getHours();
+  const istMinutes = istDate.getMinutes();
+  const istDay = istDate.getDay();
   
   // Calculate total minutes since midnight IST
   const currentMinutes = istHours * 60 + istMinutes;
   const windowStartMinutes = 14 * 60 + 55; // 14:55 = 895 minutes
+  const windowEndMinutes = 15 * 60 + 5;    // 15:05 = 905 minutes
   
-  // Start with today at 14:55 IST
-  let nextWindowIST = new Date(nowIST);
-  nextWindowIST.setUTCHours(14, 55, 0, 0);
+  // Create next window time in IST
+  let nextWindowIST = new Date(istDate);
+  nextWindowIST.setHours(14, 55, 0, 0);
   
-  // If we're past today's window, move to next day
-  if (currentMinutes >= windowStartMinutes) {
-    nextWindowIST.setUTCDate(nextWindowIST.getUTCDate() + 1);
+  // If we're past today's window end, move to next day
+  if (currentMinutes > windowEndMinutes) {
+    nextWindowIST.setDate(nextWindowIST.getDate() + 1);
   }
   
   // Skip weekends
-  let nextDay = nextWindowIST.getUTCDay();
+  let nextDay = nextWindowIST.getDay();
   while (nextDay === 0 || nextDay === 6) {
-    nextWindowIST.setUTCDate(nextWindowIST.getUTCDate() + 1);
-    nextDay = nextWindowIST.getUTCDay();
+    nextWindowIST.setDate(nextWindowIST.getDate() + 1);
+    nextDay = nextWindowIST.getDay();
   }
   
-  // Convert back to actual UTC by subtracting 5.5 hours
-  const nextWindowUTC = new Date(nextWindowIST.getTime() - (5.5 * 60 * 60 * 1000));
+  // Convert IST date back to UTC
+  // We need to parse the IST date as if it were UTC, then adjust
+  const year = nextWindowIST.getFullYear();
+  const month = nextWindowIST.getMonth();
+  const date = nextWindowIST.getDate();
+  const hours = nextWindowIST.getHours();
+  const minutes = nextWindowIST.getMinutes();
+  
+  // Create a date string in IST timezone and parse it
+  const istString = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+  
+  // Parse this as IST and convert to UTC
+  const nextWindowUTC = new Date(istString + '+05:30');
   
   return nextWindowUTC;
 }

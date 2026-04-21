@@ -46,6 +46,13 @@ export default function Dashboard() {
       const res = await fetch('/api/status');
       if (!res.ok) return;
       const data = await res.json();
+      console.log('Status data received:', {
+        currentTime: data.currentTime,
+        nextWindowStart: data.nextWindowStart,
+        nextWindowStartTimestamp: data.nextWindowStartTimestamp,
+        secondsUntilWindow: data.secondsUntilWindow,
+        isWithinWindow: data.isWithinWindow
+      });
       setStatus(data);
     } catch (error) {
       console.error('Failed to fetch status:', error);
@@ -120,14 +127,35 @@ export default function Dashboard() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setLastFetchError(data.message || 'Failed to fetch data');
+        let errorMsg = data.message || 'Failed to fetch data';
+        
+        // Enhanced error messages
+        if (errorMsg.includes('Token Expired') || errorMsg.includes('expired')) {
+          errorMsg = '🔒 Access Token Expired: Please update your Dhan credentials in Settings';
+        } else if (errorMsg.includes('Authentication Failed') || errorMsg.includes('401')) {
+          errorMsg = '❌ Authentication Failed: Invalid credentials. Check Settings';
+        } else if (errorMsg.includes('Rate Limit') || errorMsg.includes('429')) {
+          errorMsg = '⏱️ Rate Limit: Too many requests. Please wait a moment';
+        } else if (errorMsg.includes('Network') || errorMsg.includes('ECONNREFUSED')) {
+          errorMsg = '🌐 Network Error: Unable to connect to Dhan API';
+        }
+        
+        setLastFetchError(errorMsg);
         setTimeout(() => setLastFetchError(null), 8000);
         return;
       }
       await fetchTodayTicks();
       setLastFetchError(null);
     } catch (error: any) {
-      setLastFetchError('Network error. Please check your connection.');
+      let errorMsg = 'Network error. Please check your connection.';
+      
+      if (error.message?.includes('fetch')) {
+        errorMsg = '🌐 Unable to reach server. Is the app running?';
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      
+      setLastFetchError(errorMsg);
       setTimeout(() => setLastFetchError(null), 8000);
     }
   };
@@ -267,17 +295,25 @@ export default function Dashboard() {
   
   useEffect(() => {
     if (!status?.nextWindowStartTimestamp) {
+      console.log('No nextWindowStartTimestamp, using secondsUntilWindow:', status?.secondsUntilWindow);
       setClientSecondsUntilWindow(status?.secondsUntilWindow || 0);
       return;
     }
     const calculateSeconds = () => {
       const now = Date.now();
       const seconds = Math.floor((status.nextWindowStartTimestamp! - now) / 1000);
+      console.log('Calculating countdown - Now:', now, 'Target:', status.nextWindowStartTimestamp, 'Seconds:', seconds);
       return Math.max(0, seconds);
     };
     setClientSecondsUntilWindow(calculateSeconds());
     const countdownInterval = setInterval(() => {
-      setClientSecondsUntilWindow(calculateSeconds());
+      const newSeconds = calculateSeconds();
+      setClientSecondsUntilWindow(newSeconds);
+      // Refresh status if countdown reaches zero to get new window time
+      if (newSeconds === 0) {
+        console.log('Countdown reached zero, refreshing status');
+        fetchStatus();
+      }
     }, 1000);
     return () => clearInterval(countdownInterval);
   }, [status?.nextWindowStartTimestamp]);
@@ -313,6 +349,10 @@ export default function Dashboard() {
   const isPositive = changePercent >= 0;
   
   const formatCountdown = (seconds: number) => {
+    if (seconds <= 0) {
+      // If countdown is zero or negative, show a loading state
+      return '--:--:--';
+    }
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;

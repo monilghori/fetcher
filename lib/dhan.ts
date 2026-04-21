@@ -1,9 +1,14 @@
 import { DhanQuoteResponse } from './types';
-import { fetch as undiciFetch } from 'undici';
+import { Agent, fetch as undiciFetch } from 'undici';
 import { getSupabaseBrowserClient } from './supabase';
 
 const DHAN_API_BASE = 'https://api.dhan.co';
 const NIFTY50_SECURITY_ID = 13;
+
+// Create agent with TLS options for development
+const agent = process.env.NODE_ENV === 'development' 
+  ? new Agent({ connect: { rejectUnauthorized: false } })
+  : undefined;
 
 // Fetch credentials from database or fallback to env variables
 async function getDhanCredentials(): Promise<{ accessToken: string; clientId: string }> {
@@ -56,24 +61,35 @@ export async function fetchNifty50Quote(): Promise<DhanQuoteResponse> {
         'client-id': clientId,
       },
       body: JSON.stringify(requestBody),
+      dispatcher: agent
     });
     
     if (!response.ok) {
       const errorText = await response.text();
+      let errorMessage = '';
+      let errorDetails = '';
       
       if (response.status === 400) {
-        throw new Error(`Dhan API bad request (400). The request format may be incorrect.`);
+        errorMessage = 'Invalid Request';
+        errorDetails = 'The request format is incorrect. This is likely a configuration issue.';
       } else if (response.status === 401) {
-        throw new Error(`Dhan API authentication failed (401). Check your credentials in Settings.`);
+        errorMessage = 'Authentication Failed';
+        errorDetails = 'Your access token is invalid. Please update your credentials in Settings.';
       } else if (response.status === 403) {
-        throw new Error(`Dhan API access forbidden (403). Your credentials may be invalid or expired.`);
+        errorMessage = 'Access Token Expired';
+        errorDetails = 'Your Dhan access token has expired or been revoked. Please generate a new token from your Dhan account and update it in Settings.';
       } else if (response.status === 429) {
-        throw new Error(`Dhan API rate limit exceeded (429). Please wait before making more requests.`);
+        errorMessage = 'Rate Limit Exceeded';
+        errorDetails = 'Too many API requests. Please wait a few moments before trying again.';
       } else if (response.status >= 500) {
-        throw new Error(`Dhan API server error (${response.status}). The service may be temporarily unavailable.`);
+        errorMessage = 'Dhan API Unavailable';
+        errorDetails = `Dhan API server error (${response.status}). The service may be temporarily down. Please try again later.`;
       } else {
-        throw new Error(`Dhan API error (${response.status}): ${errorText}`);
+        errorMessage = `API Error (${response.status})`;
+        errorDetails = errorText || 'Unknown error occurred';
       }
+      
+      throw new Error(`${errorMessage}: ${errorDetails}`);
     }
     
     const data: any = await response.json();
