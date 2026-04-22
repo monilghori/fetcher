@@ -297,39 +297,26 @@ export default function Dashboard() {
     return () => clearInterval(countdownInterval);
   }, [status?.nextWindowStartTimestamp, status?.secondsUntilWindow, fetchStatus]);
   
-  // Client-side clock
+  // Client-side clock - use actual current time in IST
   useEffect(() => {
-    if (!status?.currentTime) {
-      setClientCurrentTime('');
-      return;
-    }
-    
-    const [datePart, timePart] = status.currentTime.split(' ');
-    if (!timePart) {
-      setClientCurrentTime('');
-      return;
-    }
-    
-    const [hours, minutes, seconds] = timePart.split(':').map(Number);
-    const serverSeconds = hours * 3600 + minutes * 60 + seconds;
-    const fetchTime = Date.now();
-    
     const updateClock = () => {
-      const elapsedMs = Date.now() - fetchTime;
-      const elapsedSeconds = Math.floor(elapsedMs / 1000);
-      let totalSeconds = serverSeconds + elapsedSeconds;
-      if (totalSeconds >= 86400) totalSeconds = totalSeconds % 86400;
-      const h = Math.floor(totalSeconds / 3600);
-      const m = Math.floor((totalSeconds % 3600) / 60);
-      const s = totalSeconds % 60;
+      const now = new Date();
+      // Convert to IST (UTC+5:30)
+      const istOffset = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
+      const istTime = new Date(now.getTime() + istOffset);
+      
+      const h = istTime.getUTCHours();
+      const m = istTime.getUTCMinutes();
+      const s = istTime.getUTCSeconds();
+      
       const timeString = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
       setClientCurrentTime(timeString);
     };
     
-    updateClock();
+    updateClock(); // Initial update
     const clockInterval = setInterval(updateClock, 1000);
     return () => clearInterval(clockInterval);
-  }, [status?.currentTime]);
+  }, []); // No dependencies - just run once and update every second
   
   const openingPrice = ticks.length > 0 ? ticks[ticks.length - 1].ltp : 0;
   const changePercent = latestTick && openingPrice > 0 
